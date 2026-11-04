@@ -22,7 +22,7 @@ const el = {
   list: $('#translation-list'), edit: $('#edit-translations'), dialog: $('#translation-dialog'),
   editor: $('#translation-editor'), save: $('#save-translations'), retry: $('#retry-parse'),
   outline: $('#outline-select'), feedback: $('#translation-feedback'),
-  editorError: $('#editor-error'), locate: $('#locate-active'),
+  editorError: $('#editor-error'),
   translate: $('#translate-page'), stopTranslation: $('#stop-translation'),
   model: $('#translation-model'),
 };
@@ -67,7 +67,6 @@ function updateControls() {
   el.pageCount.textContent = state.pdf ? `/ ${state.pdf.numPages}` : '/ —';
   el.edit.disabled = !state.document || !state.sentences.length;
   el.outline.disabled = !state.document?.outline.length;
-  el.locate.disabled = !state.active;
   el.translate.disabled = !state.document || !state.sentences.length || !state.model || state.translating;
   const translated = pageHasTranslations();
   el.translate.textContent = translated ? '重新翻译本页' : '翻译本页';
@@ -114,7 +113,6 @@ function setActive(id, origin) {
     }
     if (origin === 'translation' && nodes[0]) centerInPane(el.scroll, nodes[0]);
   }
-  el.locate.disabled = !state.active;
 }
 
 const kindLabels = { title: '论文标题', heading: '章节', sentence: '', paragraph: '段落',
@@ -660,7 +658,6 @@ async function navigateSection(id) {
   navigation.updateCurrent(state.page, section.id);
 }
 el.outline.addEventListener('change', () => void navigateSection(el.outline.value));
-el.locate.addEventListener('click', () => { if (state.active) setActive(state.active, 'translation'); });
 el.textLayer.addEventListener('pointerleave', () => setActive());
 el.list.addEventListener('pointerleave', () => setActive());
 document.addEventListener('keydown', (event) => {

@@ -186,6 +186,7 @@ button:focus-visible, select:focus-visible, .page-field input:focus-visible { ou
 .kind-heading, .kind-title { font-weight: 700; }
 .kind-reference { font-size: .85em; }
 .text-size-controls { display: inline-flex; align-items: center; margin-right: 6px; padding-right: 8px; border-right: 1px solid #e2e7ea; }
+.text-size-label { margin-right: 4px; color: #5d6d77; font-size: 12px; white-space: nowrap; }
 .text-size-controls .zoom-value { min-width: 34px; }
 .unlocated { color: #6d7c85; font-size: 13px; line-height: 1.8; border-top: 1px solid #dbe2e5; padding-top: 16px; }
 
