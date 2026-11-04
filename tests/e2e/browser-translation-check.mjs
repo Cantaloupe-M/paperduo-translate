@@ -40,7 +40,7 @@ try {
   assert.equal(await page.locator('#translate-page').textContent(), '翻译本页');
   assert.equal(await page.locator('#retranslate-page').count(), 0);
   await page.locator('#translate-page').click();
-  await page.waitForFunction(() => document.querySelector('#translation-status').textContent.includes('翻译完成'));
+  await page.waitForFunction(() => !document.querySelector('#translate-page').disabled && document.querySelector('#translation-feedback').hidden);
   assert.ok(requests > 0);
   assert.equal(await page.locator('.translation-card.is-untranslated:not(.kind-formula):not(.kind-reference)').count(), 0);
   const sentence = page.locator('.translation-card.kind-sentence').first();
@@ -64,7 +64,7 @@ try {
       body: JSON.stringify({ translations, errors: {}, skipped: [] }) });
   });
   await page.locator('#translate-page').click();
-  await page.waitForFunction(() => document.querySelector('#translation-status').textContent.includes('重新翻译完成'));
+  await page.waitForFunction(() => !document.querySelector('#translate-page').disabled && document.querySelector('#translation-feedback').hidden);
   assert.ok(requests > firstPassRequests);
   assert.deepEqual(regeneratedIds, firstPassIds, 'regeneration must include every translatable segment');
   assert.match(await sentence.textContent(), /重新生成/);

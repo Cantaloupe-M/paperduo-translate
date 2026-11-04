@@ -103,7 +103,7 @@ try {
   assert.ok((await metrics()).canvas.width < (await metrics()).source.width);
   await assertCentered();
   await page.locator('#next-page').click();
-  await page.waitForFunction(() => document.querySelector('#translation-status').textContent.startsWith('第 2 页'));
+  await page.waitForFunction(() => document.querySelector('#translation-list').dataset.page === '2');
   await assertCentered();
   assert.deepEqual(errors, []);
   console.log('PDF stays centered across zoom levels, overflow, resize and navigation; local zoom, aligned highlights and ordinary scroll: passed');

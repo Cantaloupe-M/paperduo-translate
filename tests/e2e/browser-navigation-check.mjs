@@ -50,7 +50,7 @@ try {
   assert.equal(await page.locator('#toggle-navigation').getAttribute('aria-expanded'), 'true');
   assert.ok(Math.abs((await dimensions()).source - savedWidth) < 2);
   await page.locator('.page-thumbnail[data-page="2"]').click();
-  await page.waitForFunction(() => document.querySelector('#translation-status').textContent.startsWith('第 2 页'));
+  await page.waitForFunction(() => document.querySelector('#translation-list').dataset.page === '2');
   assert.equal(await page.locator('.page-thumbnail[data-page="2"]').getAttribute('aria-current'), 'page');
   await page.locator('#outline-tab').click();
   const data = await (await page.request.get(url + '/api/documents/' + papers[0].id)).json();

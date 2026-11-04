@@ -88,17 +88,18 @@
               <button id="edit-translations" class="text-button" disabled><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 4 5 5M4 20l5-1L21 7l-5-5L4 14z"/></svg><span>编辑译文</span></button>
             </div>
           </div>
-          <div class="parser-line"><span id="parser-status">正在连接论文解析器…</span><button id="retry-parse" class="text-button" hidden>重试解析</button></div>
           <div class="translation-tools">
             <select id="translation-model" aria-label="翻译模型" disabled>
               <option>正在加载翻译模型…</option>
             </select>
-            <button id="llm-settings" class="text-button">LLM 设置</button>
+            <button id="llm-settings" class="text-button">模型设置</button>
             <button id="translate-page" class="primary-button" disabled>翻译本页</button>
             <button id="stop-translation" class="text-button" hidden>停止</button>
           </div>
-          <p id="model-description" class="provider-description">正在读取翻译模型配置…</p>
-          <p id="translation-status" class="translation-status">打开 PDF 后将按句建立对照。</p>
+          <div id="translation-feedback" class="translation-feedback" hidden>
+            <p id="translation-status" class="translation-status" role="status"></p>
+            <button id="retry-parse" class="text-button" hidden>重试解析</button>
+          </div>
           <div id="translation-list" class="translation-list" aria-live="polite"></div>
         </aside>
       </section>
@@ -108,7 +109,7 @@
     <dialog id="llm-settings-dialog" class="translation-dialog settings-dialog" aria-labelledby="llm-settings-title">
       <form id="llm-settings-form">
         <div class="dialog-heading">
-          <h2 id="llm-settings-title">LLM 设置</h2>
+          <h2 id="llm-settings-title">模型设置</h2>
           <button id="close-llm-settings" type="button" class="icon-button" aria-label="关闭">&times;</button>
         </div>
         <p>连接你的模型服务，保存后即可翻译。</p>

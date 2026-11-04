@@ -66,12 +66,12 @@ button:disabled, select:disabled { opacity: .45; cursor: default; }
 .reading-actions .text-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 6px 8px; border-radius: 6px; color: #526872; font-size: 12px; font-weight: 500; white-space: nowrap; }
 .reading-actions .text-button:hover:not(:disabled) { background: #eef5f3; color: #16766f; text-decoration: none; }
 .reading-actions .ui-icon { width: 15px; height: 15px; }
-.translation-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 18px; }
+.translation-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 16px 0 24px; }
 .translation-tools select { min-width: 0; max-width: 100%; padding: 8px; border: 1px solid #cfd6dc; border-radius: 4px; background: #fff; color: #4d5d69; font: inherit; font-size: 12px; }
 .translation-tools .primary-button { min-height: 34px; }
-.provider-description { margin: 9px 0; color: #829097; font-size: 11px; line-height: 1.6; }
-.translation-provider { display: inline-flex; align-items: center; min-height: 32px; color: #829097; font-size: 12px; }
-.parser-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; font-size: 12px; color: #0f5f65; }
+.translation-feedback { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 20px; }
+.translation-feedback .translation-status { flex: 1; margin: 0; }
+.translation-feedback .text-button { flex-shrink: 0; }
 .is-error { color: #a33128 !important; }
 
 .icon-button {

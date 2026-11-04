@@ -20,10 +20,10 @@ const el = {
   zoomOut: $('#zoom-out'), zoomIn: $('#zoom-in'), status: $('#translation-status'),
   list: $('#translation-list'), edit: $('#edit-translations'), dialog: $('#translation-dialog'),
   editor: $('#translation-editor'), save: $('#save-translations'), retry: $('#retry-parse'),
-  outline: $('#outline-select'), parser: $('#parser-status'), recent: $('#recent-documents'),
+  outline: $('#outline-select'), feedback: $('#translation-feedback'), recent: $('#recent-documents'),
   editorError: $('#editor-error'), locate: $('#locate-active'),
   translate: $('#translate-page'), stopTranslation: $('#stop-translation'),
-  modelDescription: $('#model-description'), model: $('#translation-model'),
+  model: $('#translation-model'),
 };
 
 const textSize = setupTextSize({ target: $('.translation-pane'), out: $('#text-smaller'), grow: $('#text-larger'), value: $('#text-size-value') });
@@ -47,6 +47,7 @@ async function api(path, options = {}) {
 function setStatus(message, error = false) {
   el.status.textContent = message;
   el.status.classList.toggle('is-error', error);
+  el.feedback.hidden = !message;
 }
 
 function pageHasTranslations() {
@@ -112,13 +113,6 @@ function setActive(id, origin) {
     if (origin === 'translation' && nodes[0]) centerInPane(el.scroll, nodes[0]);
   }
   el.locate.disabled = !state.active;
-}
-
-function updatePageStatus() {
-  if (!state.document) return;
-  const count = state.sentences.filter((s) => s.kind === 'sentence').length;
-  const translated = state.sentences.filter((s) => state.translations[s.id]?.trim()).length;
-  setStatus(`第 ${state.page} 页 · ${count} 句正文 · 已填 ${translated}/${state.sentences.length} 段译文。悬停任一侧可定位原文。`);
 }
 
 const kindLabels = { title: '论文标题', heading: '章节', sentence: '', paragraph: '段落',
@@ -205,7 +199,8 @@ function renderTranslations() {
     }
   }
   el.list.append(fragment);
-  updatePageStatus();
+  el.list.dataset.page = String(state.page);
+  if (!state.translating) setStatus('');
   updateControls();
 }
 
@@ -305,10 +300,11 @@ function resetDocument() {
   state.active = null;
   state.page = 1;
   el.list.replaceChildren();
+  delete el.list.dataset.page;
   el.textLayer.replaceChildren();
   el.outline.replaceChildren(new Option('章节导航', ''));
   el.retry.hidden = true;
-  el.parser.textContent = '正在解析论文…';
+  setStatus('正在解析论文…');
   updateControls();
 }
 
@@ -317,7 +313,6 @@ function applyDocument(parsed) {
   state.translations = { ...parsed.translations };
   navigation.setOutline(parsed.outline);
   for (const section of parsed.outline) el.outline.add(new Option(section.title, section.id));
-  el.parser.textContent = `GROBID · ${parsed.segments.filter((s) => s.kind === 'sentence').length} 句`;
   el.name.textContent = parsed.title || parsed.filename;
   el.name.title = parsed.title || parsed.filename;
   sessionStorage.setItem('paperduo-document', parsed.id);
@@ -327,7 +322,7 @@ function applyDocument(parsed) {
 async function parseFile(file, generation) {
   const body = new FormData();
   body.append('file', file);
-  setStatus('正在识别章节、正文与句子位置，首次解析可能需要几十秒…');
+  setStatus('正在解析论文…');
   try {
     const parsed = await api('/api/documents', { method: 'POST', body, signal: state.controller.signal });
     if (generation !== state.generation) return;
@@ -337,7 +332,6 @@ async function parseFile(file, generation) {
     await loadRecent();
   } catch (error) {
     if (generation !== state.generation || error.name === 'AbortError') return;
-    el.parser.textContent = '解析未完成';
     el.retry.hidden = false;
     setStatus(error.message, true);
   }
@@ -366,7 +360,6 @@ async function openPdf(file) {
     await parseFile(file, generation);
   } catch (error) {
     if (generation !== state.generation) return;
-    el.parser.textContent = '未打开';
     setStatus(`无法打开该 PDF：${error.message}`, true);
     updateControls();
   }
@@ -393,7 +386,6 @@ async function reopen(documentId) {
     await renderPage();
   } catch (error) {
     if (generation === state.generation && error.name !== 'AbortError') {
-      el.parser.textContent = '读取失败';
       setStatus(error.message, true);
       sessionStorage.removeItem('paperduo-document');
     }
@@ -500,13 +492,10 @@ async function loadModels() {
     for (const model of state.models) el.model.add(new Option(model, model));
     if (!state.models.length) el.model.add(new Option('尚未配置模型', ''));
     el.model.value = state.model || '';
-    el.modelDescription.textContent = state.model
-      ? '按段落上下文翻译，保持术语与引文一致。' : '点击「LLM 设置」配置翻译模型。';
   } catch {
     state.models = [];
     state.model = null;
     el.model.replaceChildren(new Option('模型配置未连接', ''));
-    el.modelDescription.textContent = '无法读取翻译模型配置。';
   }
   updateControls();
 }
@@ -547,7 +536,6 @@ async function saveModelSettings(event) {
     await loadModels();
     $('#llm-api-key').value = '';
     $('#llm-settings-dialog').close();
-    setStatus('LLM 配置已保存，可以选择模型并翻译。');
   } catch (error) { $('#llm-settings-error').textContent = error.message; }
   finally { $('#save-llm-settings').disabled = false; }
 }
@@ -568,7 +556,7 @@ async function translatePage(force = false) {
   const ids = state.sentences.filter((s) => !['formula', 'reference'].includes(s.kind)
     && (force || !state.translations[s.id]?.trim())).map((s) => s.id);
   const action = force ? '重新翻译' : '翻译';
-  if (!state.model) { setStatus('请先配置 LLM 翻译模型。', true); return; }
+  if (!state.model) { setStatus('请先在「模型设置」中配置翻译模型。', true); return; }
   if (!ids.length) { setStatus('本页已有译文，公式与参考文献保留原文。'); return; }
   state.translating = true;
   updateControls();
@@ -576,7 +564,7 @@ async function translatePage(force = false) {
   try {
     for (let index = 0; index < ids.length; index += 24) {
       if (run !== state.translationRun || generation !== state.generation) break;
-      setStatus(`正在${action}第 ${targetPage} 页：${completed}/${ids.length}，译文会逐批保存…`);
+      setStatus(`正在${action}第 ${targetPage} 页：${completed}/${ids.length}…`);
       const result = await api(`/api/documents/${documentId}/translate`, { method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: state.model, segment_ids: ids.slice(index, index + 24), force }) });
@@ -588,8 +576,7 @@ async function translatePage(force = false) {
     }
     if (generation === state.generation) {
       setStatus(run === state.translationRun
-        ? `第 ${targetPage} 页${action}完成，已保存 ${completed} 条译文。`
-        : `已停止，已完成的 ${completed} 条译文已保存。`);
+        ? '' : '已停止，已完成的译文已保存。');
     }
   } catch (error) {
     if (generation === state.generation) setStatus(`${error.message}。本次已保存 ${completed} 条译文。`, true);
@@ -684,9 +671,10 @@ void loadRecent();
 void loadModels();
 void api('/api/health').then((health) => {
   if (!state.document && !state.pendingFile) {
-    el.parser.textContent = health.grobid ? '论文解析器就绪' : '解析器未连接';
     if (!health.grobid) setStatus('论文解析器尚未启动。可先打开 PDF 预览，启动后重试解析。');
   }
-}).catch(() => { el.parser.textContent = '请通过后端服务打开'; });
+}).catch(() => {
+  if (!state.document && !state.pendingFile) setStatus('无法连接服务，请刷新重试。', true);
+});
 const lastDocument = sessionStorage.getItem('paperduo-document');
 if (lastDocument) void reopen(lastDocument);

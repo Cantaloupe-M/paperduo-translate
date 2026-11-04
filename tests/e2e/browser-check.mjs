@@ -22,7 +22,7 @@ try {
   assert.ok(await page.locator('#pdf-canvas').evaluate((canvas) => canvas.width > 0));
   await page.unroute('**/api/documents');
   await page.locator('#retry-parse').click();
-  await page.waitForFunction(() => document.querySelector('#parser-status').textContent.includes('GROBID'), { timeout: 240000 });
+  await page.waitForFunction(() => document.querySelector('#translation-list').dataset.page === '1', { timeout: 240000 });
   await page.locator('.translation-card.kind-sentence').first().waitFor();
   const card = page.locator('.translation-card.kind-sentence').first();
   const id = await card.getAttribute('data-translation-id');
@@ -52,13 +52,13 @@ try {
   assert.ok(await source.first().evaluate((node) => node.getBoundingClientRect().width) > boxWidth);
   assert.ok((await card.textContent()).includes(translation));
   await page.locator('#next-page').click();
-  await page.waitForFunction(() => document.querySelector('#translation-status').textContent.startsWith('第 2 页'));
+  await page.waitForFunction(() => document.querySelector('#translation-list').dataset.page === '2');
   await page.locator('#previous-page').click();
-  await page.waitForFunction(() => document.querySelector('#translation-status').textContent.startsWith('第 1 页'));
+  await page.waitForFunction(() => document.querySelector('#translation-list').dataset.page === '1');
   assert.ok((await card.textContent()).includes(translation));
   // Stress cancellation with overlapping render requests, then verify the final page.
   await page.locator('#next-page').evaluate((node) => { for (let i = 0; i < 3; i++) node.click(); });
-  await page.waitForFunction(() => document.querySelector('#translation-status').textContent.startsWith('第 4 页'));
+  await page.waitForFunction(() => document.querySelector('#translation-list').dataset.page === '4');
   const option = await page.locator('#outline-select option').nth(2).getAttribute('value');
   await page.locator('#outline-select').selectOption(option);
   await page.waitForFunction((heading) => document.querySelector(`[data-translation-id="${heading}"]`)?.classList.contains('is-active'), option);
