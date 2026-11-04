@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PaperDuo</title>
+    <link rel="stylesheet" href="./css/styles.css" />
+  </head>
+  <body>
+    <main class="reader-shell">
+      <header class="toolbar">
+        <div class="brand" aria-label="PaperDuo">
+          <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5.5h6.5L12 7l1.5-1.5H20v14h-6.5L12 21l-1.5-1.5H4zM12 7v14M7 9h2M7 12h2M15 9h2M15 12h2"/></svg></span>
+          <span>Paper<span class="brand-accent">Duo</span></span>
+        </div>
+        <span class="toolbar-divider" aria-hidden="true"></span>
+        <div class="document-title"><svg class="ui-icon document-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6v18h12V7zM14 3v5h4M9 12h6M9 16h6"/></svg><div class="document-name" id="document-name">未打开论文</div></div>
+        <div class="toolbar-actions">
+          <div class="recent-control"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2.6 7M3 4v7h7M12 7v5l3 2"/></svg><select id="recent-documents" aria-label="最近阅读" disabled><option value="">最近阅读</option></select></div>
+          <button id="upload-document" type="button" class="primary-button upload-button" title="选择新的 PDF，已保存的论文和译文可从最近阅读重新打开">
+            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 15v5h16v-5"/></svg><span>打开论文</span>
+          </button>
+          <input id="file-input" type="file" accept="application/pdf,.pdf" hidden />
+        </div>
+      </header>
+
+      <div class="reader-workspace">
+        <aside id="document-navigation" class="document-navigation" aria-label="文档导航" hidden>
+          <div class="navigation-heading"><strong>导航</strong><button id="close-navigation" class="icon-button" title="收起导航栏" aria-label="收起导航栏">‹</button></div>
+          <div class="navigation-tabs" role="tablist" aria-label="导航方式">
+            <button id="pages-tab" role="tab" aria-selected="true" aria-controls="pages-panel">页面</button>
+            <button id="outline-tab" role="tab" aria-selected="false" aria-controls="outline-panel" tabindex="-1">大纲</button>
+          </div>
+          <div id="pages-panel" class="navigation-panel" role="tabpanel" aria-labelledby="pages-tab"><p class="navigation-empty">打开 PDF 后显示页面缩略图。</p></div>
+          <div id="outline-panel" class="navigation-panel" role="tabpanel" aria-labelledby="outline-tab" hidden><p class="navigation-empty">打开并解析 PDF 后显示大纲。</p></div>
+        </aside>
+        <section class="split-reader" aria-label="原文与译文对照阅读器">
+        <article id="source-pane" class="source-pane">
+          <nav class="reader-controls" aria-label="原文阅读工具">
+            <div class="source-navigation">
+              <button id="toggle-navigation" class="icon-button" title="展开页面 / 大纲" aria-label="展开页面 / 大纲" aria-expanded="false" aria-controls="document-navigation"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M5.5 8h1M5.5 12h1"/></svg></button>
+              <span class="source-label">原文</span>
+              <span class="toolbar-divider" aria-hidden="true"></span>
+              <select id="outline-select" aria-label="章节导航" disabled><option value="">章节导航</option></select>
+            </div>
+            <div class="page-navigation" role="group" aria-label="翻页">
+              <button id="previous-page" class="icon-button" title="上一页（←）" aria-label="上一页"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button>
+              <div class="page-field"><input id="page-number" type="text" inputmode="numeric" pattern="[0-9]*" aria-label="当前页码，输入后按回车跳转" value="—" disabled /><span id="page-count">/ —</span></div>
+              <span id="page-indicator" class="sr-only" aria-live="polite">- / -</span>
+              <button id="next-page" class="icon-button" title="下一页（→）" aria-label="下一页"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m10 6 6 6-6 6"/></svg></button>
+            </div>
+            <div class="zoom-controls" role="group" aria-label="原文缩放">
+              <button id="zoom-out" class="icon-button" title="缩小" aria-label="缩小"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+              <button id="zoom-indicator" class="zoom-value" title="恢复 100% 缩放" aria-label="恢复 100% 缩放" disabled>100%</button>
+              <button id="zoom-in" class="icon-button" title="放大" aria-label="放大"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>
+            </div>
+          </nav>
+          <div id="empty-state" class="empty-state">
+            <div class="empty-mark">PDF</div>
+            <h1>打开一篇论文</h1>
+            <p>保留论文原始版式，逐句对照阅读。支持双栏论文、章节导航与引用位置识别。</p>
+            <button id="choose-document" type="button" class="primary-button">选择 PDF</button>
+            <input id="empty-file-input" type="file" accept="application/pdf,.pdf" hidden />
+          </div>
+          <div id="pdf-scroll" class="pdf-scroll" title="Ctrl/⌘ + 滚轮可缩放 PDF" hidden>
+            <div class="pdf-sheet">
+              <div id="pdf-page" class="pdf-page">
+                <canvas id="pdf-canvas"></canvas>
+                <div id="text-layer" class="text-layer" aria-label="可定位的原文文本"></div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <div id="pane-divider" class="pane-divider" role="separator" tabindex="0" aria-label="调整原文与译文宽度" aria-orientation="vertical" aria-controls="source-pane" aria-valuemin="25" aria-valuemax="75" aria-valuenow="62" title="拖动调整左右宽度；双击恢复默认"></div>
+        <aside class="translation-pane">
+          <div class="translation-head">
+            <div class="translation-heading">
+              <h2>中文译文</h2><span class="reading-badge">对照阅读</span>
+            </div>
+            <div class="reading-actions">
+              <button id="locate-active" class="text-button" disabled><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg><span>定位原文</span></button>
+              <button id="edit-translations" class="text-button" disabled><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 4 5 5M4 20l5-1L21 7l-5-5L4 14z"/></svg><span>编辑译文</span></button>
+            </div>
+          </div>
+          <div class="parser-line"><span id="parser-status">正在连接论文解析器…</span><button id="retry-parse" class="text-button" hidden>重试解析</button></div>
+          <div class="translation-tools">
+            <select id="translation-model" aria-label="翻译模型" disabled>
+              <option>正在加载翻译模型…</option>
+            </select>
+            <button id="llm-settings" class="text-button">LLM 设置</button>
+            <button id="translate-page" class="primary-button" disabled>翻译本页</button>
+            <button id="stop-translation" class="text-button" hidden>停止</button>
+          </div>
+          <p id="model-description" class="provider-description">正在读取翻译模型配置…</p>
+          <p id="translation-status" class="translation-status">打开 PDF 后将按句建立对照。</p>
+          <div id="translation-list" class="translation-list" aria-live="polite"></div>
+        </aside>
+      </section>
+      </div>
+    </main>
+
+    <dialog id="llm-settings-dialog" class="translation-dialog settings-dialog" aria-labelledby="llm-settings-title">
+      <form id="llm-settings-form">
+        <div class="dialog-heading">
+          <h2 id="llm-settings-title">LLM 设置</h2>
+          <button id="close-llm-settings" type="button" class="icon-button" aria-label="关闭">&times;</button>
+        </div>
+        <p>连接你的模型服务，保存后即可翻译。</p>
+        <label class="settings-field">服务地址（Base URL）
+          <input id="llm-base-url" type="url" required placeholder="https://你的服务地址/v1" autocomplete="off">
+        </label>
+        <label class="settings-field">API Key
+          <input id="llm-api-key" type="password" placeholder="填写 API Key；本地服务可留空" autocomplete="new-password">
+        </label>
+        <label class="settings-clear"><input id="llm-clear-key" type="checkbox">清除已保存的 API Key</label>
+        <label class="settings-field">默认模型
+          <input id="llm-default-model" required maxlength="200" placeholder="填写服务提供的模型名称" autocomplete="off">
+        </label>
+        <label class="settings-field">其他可选模型
+          <textarea id="llm-models" rows="3" placeholder="每行一个模型名称，也可用逗号分隔"></textarea>
+        </label>
+        <p id="llm-settings-error" class="is-error" role="alert"></p>
+        <div class="dialog-actions">
+          <button id="cancel-llm-settings" type="button" class="secondary-button">取消</button>
+          <button id="save-llm-settings" type="submit" class="primary-button">保存并使用</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="translation-dialog" class="translation-dialog">
+      <form method="dialog">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">TRANSLATION INPUT</p>
+            <h2>编辑当前页译文</h2>
+          </div>
+          <button class="icon-button" value="cancel" title="关闭" aria-label="关闭">&times;</button>
+        </div>
+        <p>每条译文独立对应原文，支持换行。保存后，翻页、缩放和重新打开论文均可恢复。</p>
+        <div id="translation-editor"></div>
+        <p id="editor-error" class="is-error" role="alert"></p>
+        <div class="dialog-actions">
+          <button value="cancel" class="secondary-button">取消</button>
+          <button id="save-translations" value="default" class="primary-button">应用译文</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="./js/app.js"></script>
+  </body>
+</html>

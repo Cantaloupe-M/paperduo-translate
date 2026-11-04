@@ -1,0 +1,38 @@
+services:
+  reader:
+    build: .
+    init: true
+    user: "${READER_UID:-1000}:${READER_GID:-1000}"
+    ports:
+      - "${READER_BIND_ADDRESS:-127.0.0.1}:4174:4174"
+    environment:
+      GROBID_URL: http://grobid:8070
+      READER_DATA_DIR: /data
+      TRANSLATION_LLM_BASE_URL: ${TRANSLATION_LLM_BASE_URL:-}
+      TRANSLATION_LLM_MODEL: ${TRANSLATION_LLM_MODEL:-}
+      TRANSLATION_LLM_MODELS: ${TRANSLATION_LLM_MODELS:-}
+      TRANSLATION_LLM_API_KEY: ${TRANSLATION_LLM_API_KEY:-}
+      TRANSLATION_GLOSSARY: ${TRANSLATION_GLOSSARY:-}
+      # The host's HTTPS proxy is made available only to academic-model calls.
+      # It is needed on hosts where Docker has no direct external DNS access.
+      TRANSLATION_LLM_PROXY: ${TRANSLATION_LLM_PROXY:-${HTTPS_PROXY:-}}
+    volumes:
+      - ./.reader-data:/data
+    depends_on:
+      - grobid
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4174/api/health', timeout=8)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+  grobid:
+    image: grobid/grobid:0.9.1-crf
+    init: true
+    ports:
+      - "127.0.0.1:8070:8070"
+    ulimits:
+      core: 0
+    mem_limit: 4g
+    cpus: 4
+    restart: unless-stopped

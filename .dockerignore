@@ -1,0 +1,6 @@
+*
+!requirements.txt
+!paperduo/
+!web/
+**/__pycache__
+**/*.pyc
