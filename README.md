@@ -2,6 +2,8 @@
 
 本地部署的学术论文双语对照阅读器：左侧原版 PDF，右侧逐句中文译文，支持双向定位、在线编辑与持久化保存。
 
+![PaperDuo 预览：左侧原版 PDF，右侧逐句中文译文](docs/preview.png)
+
 - **结构化解析**：GROBID 提取论文结构与页面坐标，结合 PDF 文本层校正正文。
 - **双向定位**：PDF.js 渲染原文，悬停原文或译文即可高亮并跳转到对应内容。
 - **LLM 翻译**：对接任意 OpenAI 兼容 Chat Completions 服务，按整段上下文翻译。
@@ -17,7 +19,7 @@ mkdir -p .reader-data
 make up                  # 等同于 docker compose -p paperduo up -d --build
 ```
 
-打开 <http://127.0.0.1:4174>。停止服务：`make down`。
+打开 [http://127.0.0.1:4174](http://127.0.0.1:4174)。停止服务：`make down`。
 
 ## 使用
 
@@ -60,17 +62,17 @@ make test                           # 后端 + 前端单元测试
 
 ## API
 
-| 方法与路径                             | 说明                                                  |
-| -------------------------------------- | ----------------------------------------------------- |
-| `POST /api/documents`                  | 上传并解析 PDF                                        |
-| `GET /api/documents`                   | 最近阅读列表                                          |
-| `GET /api/documents/{id}`              | 文档结构与译文                                        |
-| `GET /api/documents/{id}/pdf`          | 原始 PDF                                              |
-| `GET /api/documents/{id}/tei`          | 下载 TEI XML                                          |
-| `PUT /api/documents/{id}/translations` | 保存译文                                              |
-| `GET /api/translation/models`          | 已配置模型与默认模型                                  |
-| `POST /api/documents/{id}/translate`   | 翻译片段；`force: true` 跳过已有译文并重新生成        |
+| 方法与路径                               | 说明                                             |
+| ---------------------------------------- | ------------------------------------------------ |
+| `POST /api/documents`                  | 上传并解析 PDF                                   |
+| `GET /api/documents`                   | 最近阅读列表                                     |
+| `GET /api/documents/{id}`              | 文档结构与译文                                   |
+| `GET /api/documents/{id}/pdf`          | 原始 PDF                                         |
+| `GET /api/documents/{id}/tei`          | 下载 TEI XML                                     |
+| `PUT /api/documents/{id}/translations` | 保存译文                                         |
+| `GET /api/translation/models`          | 已配置模型与默认模型                             |
+| `POST /api/documents/{id}/translate`   | 翻译片段；`force: true` 跳过已有译文并重新生成 |
 
-## 致谢与许可
+基于
 
-基于 [GROBID](https://github.com/kermitt2/grobid)（Apache-2.0）与 [PDF.js](https://github.com/mozilla/pdf.js)（Apache-2.0）。本项目使用 [MIT License](LICENSE)。
+[GROBID](https://github.com/kermitt2/grobid)（Apache-2.0）与 [PDF.js](https://github.com/mozilla/pdf.js)（Apache-2.0）。本项目使用 [MIT License](LICENSE)。## 致谢与许可
