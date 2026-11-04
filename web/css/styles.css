@@ -167,23 +167,26 @@ button:focus-visible, select:focus-visible, .page-field input:focus-visible { ou
 .translation-head h2, .dialog-heading h2 { margin: 0; }
 .dialog-heading h2 { font-family: Georgia, "Noto Serif SC", serif; font-size: 22px; font-weight: 600; }
 .translation-status { margin: 17px 0 24px; color: #6d7c85; font-size: 13px; line-height: 1.6; }
-.translation-list { color: #17212b; font-size: 20px; line-height: 2; overflow-wrap: anywhere; }
+.translation-pane { --translation-size: 16px; }
+.translation-list { color: #17212b; font-size: var(--translation-size); line-height: 1.85; overflow-wrap: anywhere; }
 .translation-paragraph { margin: 0 0 1.9em; }
-.paragraph-figure-content { color: #67757e; font-size: 14px; line-height: 1.8; }
+.paragraph-figure-content { color: #67757e; font-size: .85em; line-height: 1.8; }
 .paragraph-figure-content summary { cursor: pointer; }
 .translation-paragraph[data-pending]::before { content: '含待译原文'; display: block; color: #89969d; font-size: 11px; line-height: 1.5; margin-bottom: 6px; }
 .paragraph-figure-content[data-pending]::before { display: none; }
-.reading-section { font-size: 20px; font-weight: 600; margin: 1.5em 0 .7em; }
+.reading-section { font-size: 1.1em; font-weight: 600; margin: 1.5em 0 .7em; }
 .translation-card { padding: 2px 0; cursor: crosshair; border-radius: 3px; box-decoration-break: clone; -webkit-box-decoration-break: clone; transition: background .12s; }
 .translation-card:focus-visible { outline: 1px solid #a5aeb3; outline-offset: 2px; }
 .translation-card.is-active { background: #e6e6e6; }
 .translation-card.is-untranslated { color: #67757e; }
-.paragraph-title { font-size: 22px; line-height: 1.65; }
-.translation-card .original { display: block; margin-top: 5px; color: #84929a; font-size: 11px; line-height: 1.55; }
+.paragraph-title { font-size: 1.2em; line-height: 1.65; }
+.translation-card .original { display: block; margin-top: 5px; color: #84929a; font-size: .7em; line-height: 1.55; }
 .translation-card > span:not(.segment-kind):not(.original) { white-space: pre-line; }
 .segment-kind { display: none; }
 .kind-heading, .kind-title { font-weight: 700; }
-.kind-reference { font-size: 13px; }
+.kind-reference { font-size: .85em; }
+.text-size-controls { display: inline-flex; align-items: center; margin-right: 6px; padding-right: 8px; border-right: 1px solid #e2e7ea; }
+.text-size-controls .zoom-value { min-width: 34px; }
 .unlocated { color: #6d7c85; font-size: 13px; line-height: 1.8; border-top: 1px solid #dbe2e5; padding-top: 16px; }
 
 .translation-dialog { width: min(760px, calc(100vw - 32px)); border: 1px solid #bac7cd; border-radius: 6px; padding: 24px; color: #17212b; box-shadow: 0 16px 60px rgb(15 30 38 / 28%); }

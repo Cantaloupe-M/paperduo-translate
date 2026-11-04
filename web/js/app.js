@@ -1,6 +1,7 @@
 import * as pdfjsLib from '../vendor/pdf.min.mjs';
 import { rectangleForViewport, segmentsOnPage } from './alignment.mjs';
 import { setupReaderLayout } from './reader-layout.mjs';
+import { setupTextSize } from './text-size.mjs';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdf.worker.min.mjs', import.meta.url).href;
 const state = {
@@ -24,6 +25,11 @@ const el = {
   translate: $('#translate-page'), stopTranslation: $('#stop-translation'),
   modelDescription: $('#model-description'), model: $('#translation-model'),
 };
+
+const textSize = setupTextSize({ target: $('.translation-pane'), out: $('#text-smaller'), grow: $('#text-larger'), value: $('#text-size-value') });
+$('#text-smaller').addEventListener('click', textSize.shrink);
+$('#text-larger').addEventListener('click', textSize.grow);
+$('#text-size-value').addEventListener('click', textSize.reset);
 
 const navigation = setupReaderLayout({ onPage: (page) => changePage(page - state.page), onSection: navigateSection });
 
