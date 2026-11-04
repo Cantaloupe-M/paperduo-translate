@@ -9,22 +9,80 @@
   <body>
     <main class="reader-shell">
       <header class="toolbar">
-        <div class="brand" aria-label="PaperDuo">
+        <a class="brand" href="#home" aria-label="PaperDuo 个人主页">
           <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5.5h6.5L12 7l1.5-1.5H20v14h-6.5L12 21l-1.5-1.5H4zM12 7v14M7 9h2M7 12h2M15 9h2M15 12h2"/></svg></span>
           <span>Paper<span class="brand-accent">Duo</span></span>
-        </div>
+        </a>
+        <button id="upload-document" type="button" class="primary-button upload-button" title="打开论文上传页面">
+          <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 15v5h16v-5"/></svg><span>打开论文</span>
+        </button>
         <span class="toolbar-divider" aria-hidden="true"></span>
         <div class="document-title"><svg class="ui-icon document-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6v18h12V7zM14 3v5h4M9 12h6M9 16h6"/></svg><div class="document-name" id="document-name">未打开论文</div></div>
         <div class="toolbar-actions">
-          <div class="recent-control"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2.6 7M3 4v7h7M12 7v5l3 2"/></svg><select id="recent-documents" aria-label="最近阅读" disabled><option value="">最近阅读</option></select></div>
-          <button id="upload-document" type="button" class="primary-button upload-button" title="选择新的 PDF，已保存的论文和译文可从最近阅读重新打开">
-            <svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 15v5h16v-5"/></svg><span>打开论文</span>
-          </button>
+          <a class="toolbar-link" href="#library"><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v16H4zM13 4l5-1 4 16-5 1zM4 8h6M14 8l5-1"/></svg><span>知识库</span></a>
+          <a class="toolbar-link" href="#home" aria-label="个人主页"><span class="profile-avatar" aria-hidden="true">我</span><span>个人主页</span></a>
           <input id="file-input" type="file" accept="application/pdf,.pdf" hidden />
         </div>
       </header>
 
-      <div class="reader-workspace">
+      <section id="personal-space" class="personal-space" aria-label="个人空间">
+        <aside class="space-sidebar">
+          <div class="space-profile"><span class="profile-avatar">我</span><div><strong data-profile-name>我的空间</strong><p>阅读、整理与积累</p></div></div>
+          <nav class="space-nav" aria-label="个人空间导航">
+            <a href="#home" data-space-route="home">个人主页</a>
+            <a href="#library" data-space-route="library">个人知识库 <span id="library-count">0</span></a>
+            <a href="#recent" data-space-route="recent">最近阅读</a>
+            <a href="#settings" data-space-route="settings">个人设置</a>
+          </nav>
+          <div class="collection-heading"><span>我的分类</span><button id="manage-collections" class="text-button" type="button">管理</button></div>
+          <nav id="collection-navigation" class="space-nav collection-nav" aria-label="知识库分类"></nav>
+          <a class="space-reader-link" href="#reader">← 返回阅读器</a>
+        </aside>
+        <div class="space-main">
+          <div class="space-page-heading"><div><p class="eyebrow">PAPERDUO · 我的阅读空间</p><h1 id="space-title" tabindex="-1">个人主页</h1><p id="space-description">把读过的论文，变成自己的知识。</p></div><button id="space-upload" class="primary-button" type="button">＋ 导入论文</button></div>
+          <p id="space-feedback" class="space-feedback" role="status" hidden></p>
+          <section id="home-panel" aria-label="阅读概览">
+            <div class="home-profile"><span class="profile-avatar">我</span><div class="home-profile-info"><h2 data-profile-name>我的空间</h2><p id="profile-status" role="status">阅读、整理与积累</p></div><button id="edit-profile" class="secondary-button" type="button">编辑资料</button></div>
+            <div class="space-stats"><div><span>知识库论文</span><strong id="stat-documents">0</strong></div><div><span>我的分类</span><strong id="stat-collections">0</strong></div><div><span>已阅读论文</span><strong id="stat-read">0</strong></div></div>
+            <div class="section-heading"><h2>继续阅读</h2><a href="#recent">全部最近阅读 →</a></div>
+            <div id="continue-reading"></div>
+            <div class="section-heading"><h2>我的知识库</h2><a href="#library">查看全部 →</a></div>
+            <div id="home-documents" class="library-grid"></div>
+          </section>
+          <section id="library-panel" aria-label="论文列表" hidden>
+            <div class="library-filters"><label class="library-search"><span class="sr-only">搜索知识库</span><input id="library-search" type="search" placeholder="搜索论文标题、作者或文件名" /></label><select id="library-category" aria-label="筛选分类"><option value="">全部分类</option></select><select id="library-sort" aria-label="论文排序"><option value="recent">最近阅读优先</option><option value="created">最新导入优先</option><option value="title">标题排序</option></select></div>
+            <div class="library-results-heading"><p id="library-results" aria-live="polite"></p><button id="edit-current-collection" class="text-button">管理分类</button></div>
+            <div id="library-documents" class="library-grid"></div>
+          </section>
+          <section id="settings-panel" aria-label="个人设置" hidden>
+            <div class="settings-card">
+              <div class="settings-intro"><h2>模型设置</h2><p>连接你的模型服务，设置默认模型，开始双语阅读。</p></div>
+              <form id="llm-settings-form">
+                <label class="settings-field">服务地址（Base URL）
+                  <input id="llm-base-url" type="url" required placeholder="https://你的服务地址/v1" autocomplete="off">
+                </label>
+                <label class="settings-field">API Key
+                  <input id="llm-api-key" type="password" placeholder="填写 API Key；本地服务可留空" autocomplete="new-password">
+                </label>
+                <label class="settings-clear"><input id="llm-clear-key" type="checkbox">清除已保存的 API Key</label>
+                <label class="settings-field">默认 LLM 模型
+                  <input id="llm-default-model" required maxlength="200" placeholder="填写服务提供的模型名称" autocomplete="off">
+                </label>
+                <label class="settings-field">其他可选模型
+                  <textarea id="llm-models" rows="3" placeholder="每行一个模型名称，也可用逗号分隔"></textarea>
+                </label>
+                <p class="settings-note">默认模型和其他可选模型会出现在阅读器的下拉列表中，可随时切换。保存设置后使用新的默认模型。</p>
+                <p id="llm-settings-error" class="is-error" role="alert"></p><p id="llm-settings-success" class="settings-success" role="status"></p>
+                <div class="dialog-actions">
+                  <button id="reload-llm-settings" type="button" class="secondary-button">重置修改</button>
+                  <button id="save-llm-settings" type="submit" class="primary-button">保存设置</button>
+                </div>
+              </form>
+            </div>
+          </section>
+        </div>
+      </section>
+      <div class="reader-workspace" id="reader-workspace" hidden>
         <aside id="document-navigation" class="document-navigation" aria-label="文档导航" hidden>
           <div class="navigation-heading"><strong>导航</strong><button id="close-navigation" class="icon-button" title="收起导航栏" aria-label="收起导航栏">‹</button></div>
           <div class="navigation-tabs" role="tablist" aria-label="导航方式">
@@ -89,10 +147,10 @@
             </div>
           </div>
           <div class="translation-tools">
-            <select id="translation-model" aria-label="翻译模型" disabled>
-              <option>正在加载翻译模型…</option>
-            </select>
-            <button id="llm-settings" class="text-button">模型设置</button>
+            <label class="reader-model" for="translation-model">翻译模型：
+              <select id="translation-model" aria-label="翻译模型" disabled><option>正在加载翻译模型…</option></select>
+            </label>
+            <button id="llm-settings" class="text-button" hidden>设置翻译模型</button>
             <button id="translate-page" class="primary-button" disabled>翻译本页</button>
             <button id="stop-translation" class="text-button" hidden>停止</button>
           </div>
@@ -106,32 +164,12 @@
       </div>
     </main>
 
-    <dialog id="llm-settings-dialog" class="translation-dialog settings-dialog" aria-labelledby="llm-settings-title">
-      <form id="llm-settings-form">
-        <div class="dialog-heading">
-          <h2 id="llm-settings-title">模型设置</h2>
-          <button id="close-llm-settings" type="button" class="icon-button" aria-label="关闭">&times;</button>
-        </div>
-        <p>连接你的模型服务，保存后即可翻译。</p>
-        <label class="settings-field">服务地址（Base URL）
-          <input id="llm-base-url" type="url" required placeholder="https://你的服务地址/v1" autocomplete="off">
-        </label>
-        <label class="settings-field">API Key
-          <input id="llm-api-key" type="password" placeholder="填写 API Key；本地服务可留空" autocomplete="new-password">
-        </label>
-        <label class="settings-clear"><input id="llm-clear-key" type="checkbox">清除已保存的 API Key</label>
-        <label class="settings-field">默认模型
-          <input id="llm-default-model" required maxlength="200" placeholder="填写服务提供的模型名称" autocomplete="off">
-        </label>
-        <label class="settings-field">其他可选模型
-          <textarea id="llm-models" rows="3" placeholder="每行一个模型名称，也可用逗号分隔"></textarea>
-        </label>
-        <p id="llm-settings-error" class="is-error" role="alert"></p>
-        <div class="dialog-actions">
-          <button id="cancel-llm-settings" type="button" class="secondary-button">取消</button>
-          <button id="save-llm-settings" type="submit" class="primary-button">保存并使用</button>
-        </div>
-      </form>
+    <dialog id="collections-dialog" class="translation-dialog collections-dialog" aria-labelledby="collections-title">
+      <div class="dialog-heading"><h2 id="collections-title">管理分类</h2><button id="close-collections" class="icon-button" aria-label="关闭">&times;</button></div>
+      <p class="settings-note">按研究方向整理论文，也可以保留未分类。删除分类后，论文会回到未分类。</p>
+      <form id="create-collection-form" class="collection-create"><input id="collection-name" required maxlength="60" aria-label="新分类名称" placeholder="新分类名称，如：强化学习" /><button class="primary-button" type="submit">新建分类</button></form>
+      <p id="collection-error" class="is-error" role="alert"></p>
+      <div id="collection-manager"></div>
     </dialog>
 
     <dialog id="translation-dialog" class="translation-dialog">
@@ -153,6 +191,18 @@
       </form>
     </dialog>
 
+    <dialog id="profile-dialog" class="translation-dialog profile-dialog" aria-labelledby="profile-dialog-title">
+      <form id="profile-form">
+        <h2 id="profile-dialog-title">编辑个人资料</h2>
+        <fieldset id="profile-fields">
+          <div class="profile-avatar-editor"><span id="profile-avatar-preview" class="profile-avatar">我</span><div><button id="choose-avatar" class="secondary-button" type="button">上传头像</button><button id="remove-avatar" class="text-button" type="button">移除头像</button><input id="avatar-input" type="file" accept="image/png,image/jpeg,image/webp" hidden /><p class="settings-note">支持 PNG、JPEG、WebP，大小不超过 2 MB，将自动居中裁剪。</p></div></div>
+          <label class="settings-field">用户名<input id="profile-username" name="username" required maxlength="32" autocomplete="nickname" aria-describedby="profile-name-note" /></label>
+          <p id="profile-name-note" class="settings-note">1–32 个字符</p>
+        </fieldset>
+        <p id="profile-error" class="is-error" role="alert"></p>
+        <div class="dialog-actions"><button id="cancel-profile" class="secondary-button" type="button">取消</button><button id="save-profile" class="primary-button" type="submit">保存资料</button></div>
+      </form>
+    </dialog>
     <script type="module" src="./js/app.js"></script>
   </body>
 </html>

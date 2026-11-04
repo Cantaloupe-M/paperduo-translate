@@ -1,3 +1,4 @@
+import { openSavedPaper } from './reader-helpers.mjs';
 import assert from 'node:assert/strict';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const browser = await chromium.launch({ headless: true,
@@ -10,8 +11,7 @@ try {
   await page.goto(url);
   const papers = await (await page.request.get(url + '/api/documents')).json();
   assert.ok(papers.length);
-  await page.locator(`#recent-documents option[value="${papers[0].id}"]`).waitFor({ state: 'attached' });
-  await page.locator('#recent-documents').selectOption(papers[0].id);
+  await openSavedPaper(page, papers[0].id);
   await page.locator('.pdf-sentence').first().waitFor();
   const metrics = () => page.evaluate(() => {
     const rect = (selector) => {

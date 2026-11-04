@@ -9,7 +9,7 @@ const page = await browser.newPage({ viewport: { width: 1580, height: 1000 }, de
 const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
 try {
-  await page.goto(process.env.READER_URL || 'http://127.0.0.1:4174');
+  await page.goto((process.env.READER_URL || 'http://127.0.0.1:4174') + '/#reader');
   // A missing parser must leave the original readable and allow an explicit retry.
   await page.route('**/api/documents', (route) => route.request().method() === 'POST'
     ? route.fulfill({ status: 503, contentType: 'application/json',
@@ -62,6 +62,11 @@ try {
   const option = await page.locator('#outline-select option').nth(2).getAttribute('value');
   await page.locator('#outline-select').selectOption(option);
   await page.waitForFunction((heading) => document.querySelector(`[data-translation-id="${heading}"]`)?.classList.contains('is-active'), option);
+  const readingSaved = page.waitForResponse((response) => response.url().endsWith('/reading')
+    && response.request().postDataJSON().page === 1 && response.ok());
+  await page.locator('#page-number').fill('1');
+  await page.locator('#page-number').press('Enter');
+  await readingSaved;
   await page.reload();
   await page.locator(`[data-translation-id="${id}"]`).waitFor();
   assert.ok((await card.textContent()).includes(translation), 'refresh restores saved translation');

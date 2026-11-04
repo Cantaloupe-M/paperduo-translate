@@ -2,13 +2,14 @@ import * as pdfjsLib from '../vendor/pdf.min.mjs';
 import { rectangleForViewport, segmentsOnPage } from './alignment.mjs';
 import { setupReaderLayout } from './reader-layout.mjs';
 import { setupTextSize } from './text-size.mjs';
+import { setupPersonalSpace } from './personal-space.mjs';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdf.worker.min.mjs', import.meta.url).href;
 const state = {
   pdf: null, document: null, page: 1, scale: 1.2, sentences: [], translations: {},
   generation: 0, renderVersion: 0, renderTask: null, controller: null,
   sourceNodes: new Map(), cards: new Map(), active: null, pendingFile: null,
-  translating: false, translationRun: 0, models: [], model: null,
+  translating: false, translationRun: 0, models: [], model: null, opening: false,
 };
 const $ = (selector) => document.querySelector(selector);
 const el = {
@@ -20,7 +21,7 @@ const el = {
   zoomOut: $('#zoom-out'), zoomIn: $('#zoom-in'), status: $('#translation-status'),
   list: $('#translation-list'), edit: $('#edit-translations'), dialog: $('#translation-dialog'),
   editor: $('#translation-editor'), save: $('#save-translations'), retry: $('#retry-parse'),
-  outline: $('#outline-select'), feedback: $('#translation-feedback'), recent: $('#recent-documents'),
+  outline: $('#outline-select'), feedback: $('#translation-feedback'),
   editorError: $('#editor-error'), locate: $('#locate-active'),
   translate: $('#translate-page'), stopTranslation: $('#stop-translation'),
   model: $('#translation-model'),
@@ -72,7 +73,8 @@ function updateControls() {
   el.translate.textContent = translated ? '重新翻译本页' : '翻译本页';
   el.translate.title = translated ? '重新生成本页译文，替换已有内容（包括手动编辑）' : '生成本页译文';
   el.model.disabled = !state.models.length || state.translating;
-  $('#llm-settings').disabled = state.translating;
+  $('#llm-settings').hidden = !!state.model;
+  $('#save-llm-settings').disabled = state.translating || !modelSettingsLoaded || modelSettingsSaving;
   el.stopTranslation.hidden = !state.translating;
   el.stopTranslation.disabled = false;
   el.pageIndicator.textContent = state.pdf ? `${state.page} / ${state.pdf.numPages}` : '- / -';
@@ -329,7 +331,7 @@ async function parseFile(file, generation) {
     applyDocument(parsed);
     el.retry.hidden = true;
     await renderPage();
-    await loadRecent();
+    recordReading();
   } catch (error) {
     if (generation !== state.generation || error.name === 'AbortError') return;
     el.retry.hidden = false;
@@ -339,7 +341,9 @@ async function parseFile(file, generation) {
 
 async function openPdf(file) {
   if (!file) return;
+  personalSpace.showReader();
   const generation = ++state.generation;
+  state.opening = true;
   resetDocument();
   const previousPdf = state.pdf;
   state.pdf = null;
@@ -362,11 +366,13 @@ async function openPdf(file) {
     if (generation !== state.generation) return;
     setStatus(`无法打开该 PDF：${error.message}`, true);
     updateControls();
-  }
+  } finally { if (generation === state.generation) state.opening = false; }
 }
 
 async function reopen(documentId) {
+  personalSpace.showReader();
   const generation = ++state.generation;
+  state.opening = true;
   resetDocument();
   const previousPdf = state.pdf;
   state.pdf = null;
@@ -381,21 +387,24 @@ async function reopen(documentId) {
     navigation.setPdf(pdf);
     previousPdf?.destroy();
     applyDocument(parsed);
+    state.page = Math.min(pdf.numPages, Math.max(1, parsed.last_page || 1));
     el.empty.hidden = true;
     el.scroll.hidden = false;
     await renderPage();
+    recordReading();
   } catch (error) {
     if (generation === state.generation && error.name !== 'AbortError') {
       setStatus(error.message, true);
       sessionStorage.removeItem('paperduo-document');
     }
-  }
+  } finally { if (generation === state.generation) state.opening = false; }
 }
 
 function changePage(delta) {
   const next = state.page + delta;
   if (!state.pdf || next < 1 || next > state.pdf.numPages) return;
   state.page = next;
+  recordReading();
   updateControls();
   void renderPage();
 }
@@ -474,20 +483,24 @@ async function saveTranslations(event) {
   finally { el.save.disabled = false; }
 }
 
-async function loadRecent() {
-  try {
-    const documents = await api('/api/documents');
-    el.recent.replaceChildren(new Option('最近阅读', ''));
-    for (const doc of documents) el.recent.add(new Option(doc.filename, doc.id));
-    el.recent.disabled = !documents.length;
-  } catch { /* Health check below reports backend connectivity. */ }
+let readingQueue = Promise.resolve();
+function recordReading() {
+  if (!state.document) return;
+  const documentId = state.document.id;
+  const page = state.page;
+  readingQueue = readingQueue.then(() => api(`/api/documents/${documentId}/reading`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page }),
+  })).catch((error) => { setStatus(`阅读进度保存失败：${error.message}`, true); });
 }
 
+let modelSettingsLoaded = false;
+let modelSettingsSaving = false;
 async function loadModels() {
   try {
     const config = await api('/api/translation/models');
     state.models = config.models;
-    state.model = config.default_model || state.models[0] || null;
+    const chosen = localStorage.getItem('paperduo-model');
+    state.model = state.models.includes(chosen) ? chosen : config.default_model || state.models[0] || null;
     el.model.replaceChildren();
     for (const model of state.models) el.model.add(new Option(model, model));
     if (!state.models.length) el.model.add(new Option('尚未配置模型', ''));
@@ -501,12 +514,12 @@ async function loadModels() {
 }
 
 async function openModelSettings() {
-  const dialog = $('#llm-settings-dialog');
+  modelSettingsLoaded = false;
   $('#llm-settings-error').textContent = '';
+  $('#llm-settings-success').textContent = '';
   $('#llm-api-key').value = '';
   $('#llm-clear-key').checked = false;
   $('#save-llm-settings').disabled = true;
-  dialog.showModal();
   try {
     const settings = await api('/api/translation/settings');
     $('#llm-base-url').value = settings.base_url;
@@ -514,12 +527,15 @@ async function openModelSettings() {
     $('#llm-models').value = settings.models.join('\n');
     $('#llm-api-key').placeholder = settings.has_api_key ? '已保存；留空保留原密钥' : '填写 API Key；本地服务可留空';
     $('#llm-clear-key').disabled = !settings.has_api_key;
-    $('#save-llm-settings').disabled = false;
+    modelSettingsLoaded = true;
+    $('#save-llm-settings').disabled = state.translating || modelSettingsSaving;
   } catch (error) { $('#llm-settings-error').textContent = error.message; }
 }
 
 async function saveModelSettings(event) {
   event.preventDefault();
+  if (state.translating || !modelSettingsLoaded || modelSettingsSaving) return;
+  modelSettingsSaving = true;
   const key = $('#llm-api-key').value.trim();
   const settings = {
     base_url: $('#llm-base-url').value.trim(),
@@ -533,19 +549,17 @@ async function saveModelSettings(event) {
   try {
     await api('/api/translation/settings', { method: 'PUT',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) });
+    localStorage.setItem('paperduo-model', settings.model);
     await loadModels();
-    $('#llm-api-key').value = '';
-    $('#llm-settings-dialog').close();
+    await openModelSettings();
+    $('#llm-settings-success').textContent = '模型设置已保存';
   } catch (error) { $('#llm-settings-error').textContent = error.message; }
-  finally { $('#save-llm-settings').disabled = false; }
+  finally { modelSettingsSaving = false; updateControls(); }
 }
 
-$('#llm-settings').addEventListener('click', () => void openModelSettings());
+$('#llm-settings').addEventListener('click', () => personalSpace.showSettings());
 $('#llm-settings-form').addEventListener('submit', saveModelSettings);
-for (const id of ['#close-llm-settings', '#cancel-llm-settings']) {
-  $(id).addEventListener('click', () => $('#llm-settings-dialog').close());
-}
-$('#llm-settings-dialog').addEventListener('close', () => { $('#llm-api-key').value = ''; });
+$('#reload-llm-settings').addEventListener('click', () => void openModelSettings());
 
 async function translatePage(force = false) {
   if (!state.document || state.translating) return;
@@ -585,7 +599,7 @@ async function translatePage(force = false) {
   }
 }
 
-$('#upload-document').addEventListener('click', () => el.file.click());
+$('#upload-document').addEventListener('click', () => { location.hash = 'open'; });
 $('#choose-document').addEventListener('click', () => el.emptyFile.click());
 for (const input of [el.file, el.emptyFile]) input.addEventListener('change', (event) => {
   void openPdf(event.target.files[0]);
@@ -620,6 +634,7 @@ el.save.addEventListener('click', saveTranslations);
 el.translate.addEventListener('click', () => void translatePage(pageHasTranslations()));
 el.model.addEventListener('change', () => {
   state.model = el.model.value || null;
+  if (state.model) localStorage.setItem('paperduo-model', state.model);
   updateControls();
 });
 el.stopTranslation.addEventListener('click', () => { state.translationRun++; el.stopTranslation.disabled = true;
@@ -629,16 +644,12 @@ el.retry.addEventListener('click', () => {
   el.retry.hidden = true;
   void parseFile(state.pendingFile, state.generation);
 });
-el.recent.addEventListener('change', () => {
-  const documentId = el.recent.value;
-  el.recent.value = '';
-  if (documentId) void reopen(documentId);
-});
 async function navigateSection(id) {
   const section = state.document?.outline.find((item) => item.id === id);
   if (!section) return;
   const generation = state.generation;
   state.page = section.page;
+  recordReading();
   updateControls();
   await renderPage();
   if (generation !== state.generation || state.page !== section.page) return;
@@ -653,7 +664,7 @@ el.locate.addEventListener('click', () => { if (state.active) setActive(state.ac
 el.textLayer.addEventListener('pointerleave', () => setActive());
 el.list.addEventListener('pointerleave', () => setActive());
 document.addEventListener('keydown', (event) => {
-  if (event.target.closest('textarea, input, select, dialog')) return;
+  if ($('#reader-workspace').hidden || event.target.closest('textarea, input, select, dialog')) return;
   if ((event.ctrlKey || event.metaKey) && state.pdf && $('.source-pane').matches(':hover')) {
     if (['+', '=', '-', '0'].includes(event.key)) {
       event.preventDefault();
@@ -666,8 +677,19 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'ArrowRight') { event.preventDefault(); changePage(1); }
 });
 
+const personalSpace = setupPersonalSpace({
+  api, onOpen: reopen, onSettings: openModelSettings,
+  onUpload: () => el.file.click(), beforeRefresh: () => readingQueue,
+  onReader: () => {
+    if (state.pdf) { recordReading(); void renderPage(); }
+    else if (!state.opening && !state.pendingFile) {
+      const lastDocument = sessionStorage.getItem('paperduo-document');
+      if (lastDocument) void reopen(lastDocument);
+    }
+  },
+});
+
 updateControls();
-void loadRecent();
 void loadModels();
 void api('/api/health').then((health) => {
   if (!state.document && !state.pendingFile) {
@@ -676,5 +698,3 @@ void api('/api/health').then((health) => {
 }).catch(() => {
   if (!state.document && !state.pendingFile) setStatus('无法连接服务，请刷新重试。', true);
 });
-const lastDocument = sessionStorage.getItem('paperduo-document');
-if (lastDocument) void reopen(lastDocument);

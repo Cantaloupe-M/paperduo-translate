@@ -7,7 +7,7 @@ const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
 try {
   const url = process.env.READER_URL || 'http://127.0.0.1:4174';
-  await page.goto(url);
+  await page.goto(url + '/#reader');
   const size = () => page.locator('#translation-list').evaluate((node) => parseFloat(getComputedStyle(node).fontSize));
   assert.equal(await size(), 16);
   await page.locator('#text-larger').click();

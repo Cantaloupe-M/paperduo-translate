@@ -1,3 +1,4 @@
+import base64
 import json
 import math
 import os
@@ -100,6 +101,37 @@ class ApiTests(unittest.TestCase):
         self.assertIn(("teiCoordinates", (None, "s")), sent)
         return result.json()
 
+    def test_profile_persists_and_avatar_can_be_removed(self):
+        self.assertEqual(self.client.get('/api/profile').json(), {"username": "我的空间", "avatar": None})
+        avatar = ('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC'
+                  'AAAAC0lEQVR42mP8/x8AAwMCAO+aZ1sAAAAASUVORK5CYII=')
+        saved = self.client.put('/api/profile', json={"username": "  小林  ", "avatar": avatar})
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertEqual(saved.json(), {"username": "小林", "avatar": avatar})
+        with TestClient(server.app) as another_client:
+            self.assertEqual(another_client.get('/api/profile').json(), saved.json())
+        removed = self.client.put('/api/profile', json={"username": "新用户名", "avatar": None})
+        self.assertEqual(removed.status_code, 200)
+        self.assertEqual(self.client.get('/api/profile').json(), {"username": "新用户名", "avatar": None})
+
+    def test_invalid_profile_updates_preserve_saved_profile(self):
+        original = {"username": "保留资料", "avatar": None}
+        self.client.put('/api/profile', json=original)
+        for update in ({"username": "   "}, {"username": "名" * 33},
+                       {"username": "名字", "avatar": "https://example.test/image.png"},
+                       {"username": "名字", "avatar": "data:image/svg+xml;base64,PHN2Zz4="},
+                       {"username": "名字", "avatar": "data:image/png;base64,!!!!"},
+                       {"username": "名字", "avatar": "data:image/png;base64,YQ=="},
+                       {"username": "名字", "avatar": "data:image/png;base64,A"}):
+            with self.subTest(update=update):
+                self.assertEqual(self.client.put('/api/profile', json=update).status_code, 422)
+                self.assertEqual(self.client.get('/api/profile').json(), original)
+        oversized = 'data:image/png;base64,' + base64.b64encode(
+            b'\x89PNG\r\n\x1a\n' + b'x' * server.MAX_AVATAR_BYTES).decode()
+        self.assertIn(self.client.put('/api/profile', json={"username": "名字", "avatar": oversized}).status_code,
+                      (413, 422))
+        self.assertEqual(self.client.get('/api/profile').json(), original)
+
     def test_import_cache_and_persistent_translations(self):
         document = self.import_paper()
         segment = document["segments"][0]["id"]
@@ -120,6 +152,72 @@ class ApiTests(unittest.TestCase):
         document = self.import_paper()
         path = f'/api/documents/{document["id"]}/translations'
         self.assertEqual(self.client.put(path, json={"translations": {"made-up": "wrong"}}).status_code, 422)
+
+    def test_library_classification_preserves_papers_translations_and_progress(self):
+        document = self.import_paper()
+        path = f'/api/documents/{document["id"]}'
+        segment = document["segments"][0]["id"]
+        self.client.put(path + "/translations", json={"translations": {segment: "保留译文"}})
+        created = self.client.post("/api/collections", json={"name": " 强化学习 "})
+        self.assertEqual(created.status_code, 201)
+        collection = created.json()
+        self.assertEqual(collection["name"], "强化学习")
+        self.assertEqual(self.client.put(path + "/collection", json={"collection_id": collection["id"]}).status_code, 200)
+        self.client.put(path + "/reading", json={"page": 2})
+        renamed = self.client.put(f'/api/collections/{collection["id"]}', json={"name": "对齐研究"})
+        self.assertEqual(renamed.json()["name"], "对齐研究")
+        self.assertEqual(self.client.get("/api/collections").json(), [renamed.json()])
+        paper = self.client.get("/api/documents").json()[0]
+        self.assertEqual(paper["collection_id"], collection["id"])
+        self.assertEqual(paper["title"], "A CS Paper")
+        self.assertEqual(paper["authors"], ["Ada Example"])
+        self.assertEqual(paper["page_count"], 2)
+        self.assertEqual(paper["last_page"], 2)
+        self.client.delete(f'/api/collections/{collection["id"]}')
+        restored = self.client.get(path).json()
+        self.assertIsNone(restored["collection_id"])
+        self.assertEqual(restored["last_page"], 2)
+        self.assertEqual(restored["last_read_at"], paper["last_read_at"])
+        self.assertEqual(restored["translations"][segment], "保留译文")
+        self.assertEqual(self.client.get(path + "/pdf").content, b"%PDF-1.4 test")
+
+    def test_recent_reading_uses_explicit_read_activity_and_library_has_no_thirty_paper_limit(self):
+        document = self.import_paper()
+        with server.database() as db:
+            row = server.get_document(db, document["id"])
+            for index in range(35):
+                db.execute("INSERT INTO documents (id, filename, pdf, tei, parsed, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                           (f"paper-{index}", f"paper-{index}.pdf", row["pdf"], row["tei"], row["parsed"], "2020-01-01 00:00:00"))
+        self.assertEqual(len(self.client.get("/api/documents").json()), 36)
+        # Fetching metadata and previews does not count as reading a paper.
+        self.assertIsNone(self.client.get("/api/documents/paper-0").json()["last_read_at"])
+        self.client.get("/api/documents/paper-0/pdf")
+        self.assertIsNone(next(d for d in self.client.get("/api/documents").json() if d["id"] == "paper-0")["last_read_at"])
+        self.client.put("/api/documents/paper-0/reading", json={"page": 2})
+        papers = self.client.get("/api/documents").json()
+        self.assertEqual(papers[0]["id"], "paper-0")
+        self.assertEqual(papers[0]["last_page"], 2)
+        self.client.put(f'/api/documents/{document["id"]}/reading', json={"page": 1})
+        self.assertEqual(self.client.get("/api/documents").json()[0]["id"], document["id"])
+
+    def test_library_rejects_invalid_changes_and_supports_unfiled(self):
+        document = self.import_paper()
+        path = f'/api/documents/{document["id"]}'
+        for name in (" ", "x" * 61):
+            self.assertEqual(self.client.post("/api/collections", json={"name": name}).status_code, 422)
+        collection = self.client.post("/api/collections", json={"name": "论文"}).json()
+        self.assertEqual(self.client.post("/api/collections", json={"name": "论文"}).status_code, 409)
+        other = self.client.post("/api/collections", json={"name": "其他"}).json()
+        self.assertEqual(self.client.put(f'/api/collections/{other["id"]}', json={"name": "论文"}).status_code, 409)
+        self.assertEqual(self.client.put(path + "/collection", json={"collection_id": "missing"}).status_code, 404)
+        self.client.put(path + "/collection", json={"collection_id": collection["id"]})
+        self.client.put(path + "/collection", json={"collection_id": None})
+        self.assertIsNone(self.client.get(path).json()["collection_id"])
+        for page in (0, 3):
+            self.assertEqual(self.client.put(path + "/reading", json={"page": page}).status_code, 422)
+        for suffix, body in (("reading", {"page": 1}), ("collection", {"collection_id": None})):
+            self.assertEqual(self.client.put(f"/api/documents/missing/{suffix}", json=body).status_code, 404)
+        self.assertEqual(self.client.delete("/api/collections/missing").status_code, 404)
 
     def test_cached_tei_upgrade_preserves_translation_ids(self):
         document = self.import_paper()

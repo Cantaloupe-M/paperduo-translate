@@ -1,3 +1,4 @@
+import { openSavedPaper } from './reader-helpers.mjs';
 import assert from 'node:assert/strict';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_PATH || undefined,
@@ -18,9 +19,9 @@ try {
   await page.route('**/api/documents/' + documents[0].id, async (route) => {
     const response = await route.fetch();
     const document = await response.json();
-    await route.fulfill({ response, json: { ...document, translations: {} } });
+    await route.fulfill({ response, json: { ...document, last_page: 1, translations: {} } });
   });
-  await page.locator('#recent-documents').selectOption(documents[0].id);
+  await openSavedPaper(page, documents[0].id);
   await page.locator('.translation-card.kind-sentence').first().waitFor();
   assert.ok(await page.locator('.translation-paragraph .translation-card + .translation-card').count() > 0,
     'sentences share paragraphs instead of separate cards');
@@ -72,7 +73,7 @@ try {
     models: [], default_model: null,
   } }));
   await page.reload();
-  await page.locator('#recent-documents').selectOption(documents[0].id);
+  await openSavedPaper(page, documents[0].id);
   await page.locator('.translation-card.kind-sentence').first().waitFor();
   await page.waitForFunction(() => document.querySelector('#translation-model').textContent.includes('尚未配置模型'));
   assert.ok(await page.locator('#translation-model').isDisabled());
@@ -99,19 +100,20 @@ try {
   await page.locator('#llm-default-model').fill('configured-model');
   await page.locator('#llm-models').fill('second-model, third-model');
   await page.locator('#save-llm-settings').click();
-  await page.locator('#llm-settings-dialog').waitFor({ state: 'hidden' });
+  await page.waitForFunction(() => document.querySelector('#llm-settings-success').textContent.includes('已保存'));
   assert.equal(await page.locator('#translation-model').inputValue(), 'configured-model');
   assert.deepEqual(await page.locator('#translation-model option').allTextContents(),
     ['configured-model', 'second-model', 'third-model']);
-  assert.ok(await page.locator('#translate-page').isEnabled());
+  await page.evaluate(() => { location.hash = 'reader'; });
+  await page.waitForFunction(() => !document.querySelector('#translate-page').disabled);
   await page.reload();
   await page.waitForFunction(() => document.querySelector('#translation-model').value === 'configured-model');
-  await page.locator('#llm-settings').click();
+  await page.evaluate(() => { location.hash = 'settings'; });
   await page.waitForFunction(() => !document.querySelector('#save-llm-settings').disabled);
   assert.equal(await page.locator('#llm-base-url').inputValue(), 'http://models.test/v1');
   assert.equal(await page.locator('#llm-api-key').inputValue(), '');
   assert.match(await page.locator('#llm-api-key').getAttribute('placeholder'), /已保存/);
-  await page.locator('#cancel-llm-settings').click();
+  await page.evaluate(() => { location.hash = 'reader'; });
   assert.deepEqual(errors, []);
   console.log('model settings save and reload, model selection, missing-model controls, page translation and regeneration: passed');
 } finally { await browser.close(); }

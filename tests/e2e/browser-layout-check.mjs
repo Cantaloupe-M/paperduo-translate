@@ -1,3 +1,4 @@
+import { openSavedPaper } from './reader-helpers.mjs';
 // Run against a reader containing the paper that exposed merged diagram labels.
 import assert from 'node:assert/strict';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
@@ -13,8 +14,7 @@ try {
   const documents = await response.json();
   const document = documents.find((d) => d.filename === (process.env.LAYOUT_PDF || '2604.17308v1.pdf'));
   assert.ok(document, 'the reported paper must already be imported');
-  await page.locator(`#recent-documents option[value="${document.id}"]`).waitFor({ state: 'attached' });
-  await page.locator('#recent-documents').selectOption(document.id);
+  await openSavedPaper(page, document.id);
   await page.locator('.translation-card.kind-title').waitFor();
   for (let number = 2; number <= 4; number++) {
     await page.locator('#next-page').click();

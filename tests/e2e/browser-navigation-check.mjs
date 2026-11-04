@@ -1,3 +1,4 @@
+import { openSavedPaper } from './reader-helpers.mjs';
 import assert from 'node:assert/strict';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const browser = await chromium.launch({ headless: true,
@@ -7,13 +8,12 @@ const errors = [];
 page.on('pageerror', (error) => errors.push(error.message));
 try {
   const url = process.env.READER_URL || 'http://127.0.0.1:4174';
-  await page.goto(url);
+  await page.goto(url + '/#reader');
   await page.locator('#toggle-navigation').click();
   assert.ok((await page.locator('#pages-panel').textContent()).includes('打开 PDF'));
   const papers = await (await page.request.get(url + '/api/documents')).json();
   assert.ok(papers.length);
-  await page.locator(`#recent-documents option[value="${papers[0].id}"]`).waitFor({ state: 'attached' });
-  await page.locator('#recent-documents').selectOption(papers[0].id);
+  await openSavedPaper(page, papers[0].id);
   await page.locator('.pdf-sentence').first().waitFor();
   await page.locator('.thumbnail-preview canvas').first().waitFor();
   const dimensions = () => page.evaluate(() => ({

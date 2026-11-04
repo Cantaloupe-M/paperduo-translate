@@ -1,5 +1,7 @@
 """Local reader API. GROBID parses papers; PDF.js renders the original PDF."""
 
+import base64
+import binascii
 import hashlib
 import json
 import math
@@ -7,6 +9,8 @@ import os
 import re
 import sqlite3
 import asyncio
+import uuid
+from datetime import datetime, timezone
 from contextlib import closing, contextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -25,6 +29,7 @@ WEB_DIR = ROOT / "web"
 DATA_DIR = Path(os.getenv("READER_DATA_DIR", ROOT / ".reader-data"))
 GROBID_URL = os.getenv("GROBID_URL", "http://127.0.0.1:8070").rstrip("/")
 MAX_PDF_BYTES = 30 * 1024 * 1024
+MAX_AVATAR_BYTES = 2 * 1024 * 1024
 SCHEMA_VERSION = 3
 NS = {"t": "http://www.tei-c.org/ns/1.0"}
 app = FastAPI(title="PaperDuo", docs_url=None, redoc_url=None)
@@ -46,6 +51,13 @@ def database():
         db.execute("""CREATE TABLE IF NOT EXISTS translation_cache (
             provider TEXT NOT NULL, source_hash TEXT NOT NULL, text TEXT NOT NULL,
             PRIMARY KEY (provider, source_hash))""")
+        db.execute("""CREATE TABLE IF NOT EXISTS collections (
+            id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE)""")
+        db.execute("""CREATE TABLE IF NOT EXISTS document_library (
+            document_id TEXT PRIMARY KEY, collection_id TEXT,
+            last_read_at TEXT, last_page INTEGER NOT NULL DEFAULT 1)""")
+        db.execute("""CREATE TABLE IF NOT EXISTS profile (
+            id INTEGER PRIMARY KEY CHECK (id=1), username TEXT NOT NULL, avatar TEXT)""")
         yield db
 
 
@@ -171,6 +183,9 @@ def document_response(row, db, cached=True):
         db.execute("UPDATE documents SET parsed = ? WHERE id = ?",
                    (json.dumps(result, ensure_ascii=False), row["id"]))
     result.update(id=row["id"], filename=row["filename"], cached=cached)
+    metadata = db.execute("SELECT collection_id, last_read_at, last_page FROM document_library "
+                          "WHERE document_id=?", (row["id"],)).fetchone()
+    result.update(dict(metadata) if metadata else {"collection_id": None, "last_read_at": None, "last_page": 1})
     valid_ids = {s["id"] for s in result["segments"]}
     result["translations"] = {r["segment_id"]: r["text"] for r in db.execute(
         "SELECT segment_id, text FROM translations WHERE document_id = ?", (row["id"],))
@@ -199,8 +214,142 @@ async def health():
 @app.get("/api/documents")
 def list_documents():
     with database() as db:
-        rows = db.execute("SELECT id, filename, created_at FROM documents ORDER BY created_at DESC LIMIT 30")
-        return [dict(row) for row in rows]
+        rows = db.execute("""SELECT d.id, d.filename, d.created_at, d.parsed,
+            l.collection_id, l.last_read_at, COALESCE(l.last_page, 1) AS last_page
+            FROM documents d LEFT JOIN document_library l ON l.document_id=d.id
+            ORDER BY julianday(COALESCE(l.last_read_at, d.created_at)) DESC, d.id""")
+        documents = []
+        for row in rows:
+            item = dict(row)
+            parsed = json.loads(item.pop("parsed"))
+            item.update(title=parsed.get("title") or item["filename"],
+                        authors=parsed.get("authors", []), page_count=len(parsed.get("pages", [])))
+            documents.append(item)
+        return documents
+
+
+class ProfileUpdate(BaseModel):
+    username: str = Field(max_length=32)
+    avatar: str | None = Field(default=None, max_length=4 * ((MAX_AVATAR_BYTES + 2) // 3) + 32)
+
+
+@app.get("/api/profile")
+def read_profile():
+    with database() as db:
+        row = db.execute("SELECT username, avatar FROM profile WHERE id=1").fetchone()
+        return dict(row) if row else {"username": "我的空间", "avatar": None}
+
+
+@app.put("/api/profile")
+def save_profile(update: ProfileUpdate):
+    username = update.username.strip()
+    if not username:
+        raise HTTPException(422, "请输入用户名")
+    if update.avatar is not None:
+        match = re.fullmatch(r"data:image/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)", update.avatar)
+        if not match:
+            raise HTTPException(422, "请选择 PNG、JPEG 或 WebP 格式的头像")
+        try:
+            data = base64.b64decode(match[2], validate=True)
+        except binascii.Error:
+            raise HTTPException(422, "头像数据无效，请重新选择图片") from None
+        if len(data) > MAX_AVATAR_BYTES:
+            raise HTTPException(413, "头像不能超过 2 MB")
+        signatures = {"png": data.startswith(b"\x89PNG\r\n\x1a\n"),
+                      "jpeg": data.startswith(b"\xff\xd8\xff"),
+                      "webp": data.startswith(b"RIFF") and data[8:12] == b"WEBP"}
+        if not signatures[match[1]]:
+            raise HTTPException(422, "头像数据无效，请重新选择图片")
+    try:
+        with database() as db:
+            db.execute("INSERT INTO profile VALUES (1, ?, ?) ON CONFLICT(id) "
+                       "DO UPDATE SET username=excluded.username, avatar=excluded.avatar",
+                       (username, update.avatar))
+    except (OSError, sqlite3.Error):
+        raise HTTPException(503, "个人资料保存失败，请检查数据目录权限与磁盘空间后重试") from None
+    return {"username": username, "avatar": update.avatar}
+
+
+class CollectionUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+
+
+@app.get("/api/collections")
+def list_collections():
+    with database() as db:
+        return [dict(row) for row in db.execute("SELECT id, name FROM collections ORDER BY name, id")]
+
+
+def write_collection(db, collection_id, name, create=False):
+    name = name.strip()
+    if not name:
+        raise HTTPException(422, "请输入分类名称")
+    if not create and not db.execute("SELECT 1 FROM collections WHERE id=?", (collection_id,)).fetchone():
+        raise HTTPException(404, "分类不存在")
+    try:
+        if create:
+            db.execute("INSERT INTO collections VALUES (?, ?)", (collection_id, name))
+        else:
+            db.execute("UPDATE collections SET name=? WHERE id=?", (name, collection_id))
+    except sqlite3.IntegrityError:
+        raise HTTPException(409, "已有同名分类") from None
+    return {"id": collection_id, "name": name}
+
+
+@app.post("/api/collections", status_code=201)
+def create_collection(update: CollectionUpdate):
+    with database() as db:
+        return write_collection(db, uuid.uuid4().hex, update.name, create=True)
+
+
+@app.put("/api/collections/{collection_id}")
+def rename_collection(collection_id: str, update: CollectionUpdate):
+    with database() as db:
+        return write_collection(db, collection_id, update.name)
+
+
+@app.delete("/api/collections/{collection_id}")
+def delete_collection(collection_id: str):
+    with database() as db:
+        if not db.execute("DELETE FROM collections WHERE id=?", (collection_id,)).rowcount:
+            raise HTTPException(404, "分类不存在")
+        db.execute("UPDATE document_library SET collection_id=NULL WHERE collection_id=?", (collection_id,))
+    return {"deleted": True}
+
+
+class DocumentCollectionUpdate(BaseModel):
+    collection_id: str | None = None
+
+
+@app.put("/api/documents/{document_id}/collection")
+def assign_collection(document_id: str, update: DocumentCollectionUpdate):
+    with database() as db:
+        get_document(db, document_id)
+        if update.collection_id is not None and not db.execute(
+                "SELECT 1 FROM collections WHERE id=?", (update.collection_id,)).fetchone():
+            raise HTTPException(404, "分类不存在")
+        db.execute("INSERT INTO document_library (document_id, collection_id) VALUES (?, ?) "
+                   "ON CONFLICT(document_id) DO UPDATE SET collection_id=excluded.collection_id",
+                   (document_id, update.collection_id))
+    return {"collection_id": update.collection_id}
+
+
+class ReadingUpdate(BaseModel):
+    page: int = Field(ge=1)
+
+
+@app.put("/api/documents/{document_id}/reading")
+def record_reading(document_id: str, update: ReadingUpdate):
+    with database() as db:
+        row = get_document(db, document_id)
+        pages = json.loads(row["parsed"])["pages"]
+        if update.page > len(pages):
+            raise HTTPException(422, "页码超出论文范围")
+        read_at = datetime.now(timezone.utc).isoformat(timespec="microseconds")
+        db.execute("INSERT INTO document_library (document_id, last_read_at, last_page) VALUES (?, ?, ?) "
+                   "ON CONFLICT(document_id) DO UPDATE SET last_read_at=excluded.last_read_at, "
+                   "last_page=excluded.last_page", (document_id, read_at, update.page))
+    return {"last_read_at": read_at, "last_page": update.page}
 
 
 @app.post("/api/documents")
