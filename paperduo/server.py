@@ -19,7 +19,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from lxml import etree
 from pydantic import BaseModel, Field
-from .layout import separate_illustrations
+from .layout import paragraph_starts, separate_illustrations
 from .translation import (TranslationError, cache_namespace, default_provider, providers,
                          academic_model_config, configured_models, translate_segments,
                          read_model_settings, save_model_settings)
@@ -30,7 +30,7 @@ DATA_DIR = Path(os.getenv("READER_DATA_DIR", ROOT / ".reader-data"))
 GROBID_URL = os.getenv("GROBID_URL", "http://127.0.0.1:8070").rstrip("/")
 MAX_PDF_BYTES = 30 * 1024 * 1024
 MAX_AVATAR_BYTES = 2 * 1024 * 1024
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 NS = {"t": "http://www.tei-c.org/ns/1.0"}
 app = FastAPI(title="PaperDuo", docs_url=None, redoc_url=None)
 translation_slots = asyncio.Semaphore(2)
@@ -130,8 +130,13 @@ def parse_tei(xml, pdf=None):
             sentences = node.findall(".//t:s", NS)
             if sentences:
                 # Never assign the whole paragraph's rectangle to every sentence.
-                for sentence in sentences:
-                    add(sentence, "sentence", section, paragraph_id=paragraph_id)
+                starts = {i for i in paragraph_starts([coordinates(s.get("coords")) for s in sentences])
+                          if not text_of(sentences[i])[:1].islower()}
+                part = 0
+                for index, sentence in enumerate(sentences):
+                    part += index in starts
+                    add(sentence, "sentence", section,
+                        paragraph_id=f"{paragraph_id}-{part}" if part else paragraph_id)
             else:
                 add(node, "paragraph" if tag != "note" else "note", section, paragraph_id=paragraph_id)
         elif tag == "formula":

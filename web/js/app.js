@@ -3,6 +3,7 @@ import { rectangleForViewport, segmentsOnPage } from './alignment.mjs';
 import { setupReaderLayout } from './reader-layout.mjs';
 import { setupTextSize } from './text-size.mjs';
 import { setupPersonalSpace } from './personal-space.mjs';
+import { translationBatches } from './translation-batches.mjs';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdf.worker.min.mjs', import.meta.url).href;
 const state = {
@@ -565,33 +566,43 @@ async function translatePage(force = false) {
   const generation = state.generation;
   const run = ++state.translationRun;
   const targetPage = state.page;
-  const ids = state.sentences.filter((s) => !['formula', 'reference'].includes(s.kind)
-    && (force || !state.translations[s.id]?.trim())).map((s) => s.id);
+  const segments = state.sentences.filter((s) => !['formula', 'reference'].includes(s.kind)
+    && (force || !state.translations[s.id]?.trim()));
+  const batches = translationBatches(segments);
   const action = force ? '重新翻译' : '翻译';
   if (!state.model) { setStatus('请先在「模型设置」中配置翻译模型。', true); return; }
-  if (!ids.length) { setStatus('本页已有译文，公式与参考文献保留原文。'); return; }
+  if (!segments.length) { setStatus('本页已有译文，公式与参考文献保留原文。'); return; }
   state.translating = true;
   updateControls();
   let completed = 0;
+  let nextBatch = 0;
+  let failure = null;
+  const model = state.model;
+  const worker = async () => {
+    while (nextBatch < batches.length && !failure && run === state.translationRun && generation === state.generation) {
+      const batch = batches[nextBatch++];
+      setStatus(`正在${action}第 ${targetPage} 页：${completed}/${segments.length}…`);
+      try {
+        const result = await api(`/api/documents/${documentId}/translate`, { method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model, segment_ids: batch, force }) });
+        if (generation !== state.generation) return;
+        Object.assign(state.translations, result.translations);
+        completed += Object.keys(result.translations).length;
+        renderTranslations();
+        if (Object.keys(result.errors).length) failure = Object.values(result.errors)[0];
+        else if (run === state.translationRun) setStatus(`正在${action}第 ${targetPage} 页：${completed}/${segments.length}…`);
+      } catch (error) {
+        failure = error.message;
+      }
+    }
+  };
   try {
-    for (let index = 0; index < ids.length; index += 24) {
-      if (run !== state.translationRun || generation !== state.generation) break;
-      setStatus(`正在${action}第 ${targetPage} 页：${completed}/${ids.length}…`);
-      const result = await api(`/api/documents/${documentId}/translate`, { method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: state.model, segment_ids: ids.slice(index, index + 24), force }) });
-      if (generation !== state.generation) return;
-      Object.assign(state.translations, result.translations);
-      completed += Object.keys(result.translations).length;
-      renderTranslations();
-      if (Object.keys(result.errors).length) throw new Error(Object.values(result.errors)[0]);
-    }
+    await Promise.all(Array.from({ length: Math.min(2, batches.length) }, worker));
     if (generation === state.generation) {
-      setStatus(run === state.translationRun
-        ? '' : '已停止，已完成的译文已保存。');
+      setStatus(failure ? `${failure}。本次已保存 ${completed} 条译文。` : run === state.translationRun
+        ? '' : '已停止，已完成的译文已保存。', Boolean(failure));
     }
-  } catch (error) {
-    if (generation === state.generation) setStatus(`${error.message}。本次已保存 ${completed} 条译文。`, true);
   } finally {
     if (generation === state.generation) { state.translating = false; updateControls(); }
   }

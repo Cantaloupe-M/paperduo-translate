@@ -28,6 +28,32 @@ def page_words(pdf, page):
             for w in root.xpath('//*[local-name()="word"]')]
 
 
+def paragraph_starts(sentence_boxes):
+    """Indices of sentences that begin a new paragraph inside one TEI <p>.
+
+    GROBID sometimes merges consecutive paragraphs (typically one that opens with a
+    run-in bold heading). Justified text fills every line except a paragraph's last,
+    so a sentence that starts at the left edge of a new line right after a clearly
+    short line is a paragraph start. Only same-page, same-column pairs are compared.
+    """
+    starts = set()
+    for index in range(1, len(sentence_boxes)):
+        before, after = sentence_boxes[index - 1], sentence_boxes[index]
+        if not before or not after or before[-1]["page"] != after[0]["page"]:
+            continue
+        last, first = before[-1], after[0]
+        lines = [b for boxes in sentence_boxes for b in boxes if b["page"] == last["page"]]
+        widest = max(b["width"] for b in lines)
+        # Full-width lines at this sentence's left edge define the column's right edge.
+        column = [b for b in lines if b["width"] >= 0.9 * widest and abs(b["x"] - first["x"]) <= 4]
+        if widest < 100 or not column or last["x"] < first["x"] - 4:
+            continue
+        edge = max(b["x"] + b["width"] for b in column)
+        if first["y"] >= last["y"] + 0.5 * last["height"] and last["x"] + last["width"] < edge - 12:
+            starts.add(index)
+    return starts
+
+
 def illustration_boundary(boxes):
     """Return a conservative diagram-prefix / horizontal-text-suffix boundary."""
     if len(boxes) < 10 or len({b["page"] for b in boxes}) != 1:

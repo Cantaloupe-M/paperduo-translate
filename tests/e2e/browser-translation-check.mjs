@@ -30,19 +30,26 @@ try {
   assert.deepEqual(await page.locator('#translation-model option').allTextContents(), ['model-a', 'model-b']);
   await page.locator('#translation-model').selectOption('model-b');
   let requests = 0;
+  let activeRequests = 0;
+  let maxActiveRequests = 0;
   await page.route('**/api/documents/*/translate', async (route) => {
     requests++;
+    activeRequests++;
+    maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
     const request = route.request().postDataJSON();
     assert.equal(request.model, 'model-b');
     assert.equal(request.force, false);
     const translations = Object.fromEntries(request.segment_ids.map((id) => [id, '这是按原论文段落连续呈现的中文译文。']));
+    await new Promise((resolve) => setTimeout(resolve, 100));
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ translations, errors: {}, skipped: [] }) });
+    activeRequests--;
   });
   assert.equal(await page.locator('#translate-page').textContent(), '翻译本页');
   assert.equal(await page.locator('#retranslate-page').count(), 0);
   await page.locator('#translate-page').click();
   await page.waitForFunction(() => !document.querySelector('#translate-page').disabled && document.querySelector('#translation-feedback').hidden);
   assert.ok(requests > 0);
+  if (requests > 1) assert.equal(maxActiveRequests, 2, 'paragraph batches run concurrently');
   assert.equal(await page.locator('.translation-card.is-untranslated:not(.kind-formula):not(.kind-reference)').count(), 0);
   const sentence = page.locator('.translation-card.kind-sentence').first();
   await sentence.hover();

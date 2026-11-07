@@ -70,3 +70,24 @@ class IllustrationTests(unittest.TestCase):
         self.assertEqual(result[1]["paragraph_id"], result[2]["paragraph_id"])
         self.assertEqual(result[-1]["kind"], "sentence")
 
+
+
+class ParagraphStartTests(unittest.TestCase):
+    @staticmethod
+    def line(y, width=243, x=315, page=1):
+        return {"page": page, "x": x, "y": y, "width": width, "height": 8.6}
+
+    def test_short_last_line_then_left_aligned_sentence_starts_paragraph(self):
+        sentences = [[self.line(100), self.line(111, 190)], [self.line(126, 143)],
+                     [self.line(137, 243), self.line(148, 100)]]
+        self.assertEqual(layout.paragraph_starts(sentences), {1, 2})
+
+    def test_sentences_continuing_a_line_or_a_full_line_stay_together(self):
+        sentences = [[self.line(100), self.line(111, 120)], [self.line(111, 120, x=440), self.line(122)],
+                     [self.line(133, 243)], [self.line(144, 100)]]
+        self.assertEqual(layout.paragraph_starts(sentences), set())
+
+    def test_page_and_column_changes_are_not_paragraph_starts(self):
+        sentences = [[self.line(690, 100)], [self.line(100, 243, page=2)], [self.line(120, 243, page=2)],
+                     [self.line(150, 243, x=60, page=2)]]
+        self.assertEqual(layout.paragraph_starts(sentences), set())
