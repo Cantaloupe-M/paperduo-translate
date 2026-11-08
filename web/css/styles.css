@@ -18,7 +18,7 @@ button, input, textarea, select { font: inherit; }
   height: 100vh;
   min-height: 480px;
   display: grid;
-  grid-template-rows: 60px minmax(0, 1fr);
+  grid-template-rows: 52px minmax(0, 1fr);
 }
 
 .toolbar {
@@ -66,10 +66,12 @@ button:disabled, select:disabled { opacity: .45; cursor: default; }
 .reading-actions .text-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 6px 8px; border-radius: 6px; color: #526872; font-size: 12px; font-weight: 500; white-space: nowrap; }
 .reading-actions .text-button:hover:not(:disabled) { background: #eef5f3; color: #16766f; text-decoration: none; }
 .reading-actions .ui-icon { width: 15px; height: 15px; }
-.translation-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 16px 0 24px; }
+.translation-toolbar { position: sticky; top: 0; z-index: 3; margin: 0 calc(-1 * clamp(18px, 2vw, 32px)); padding: 0 clamp(18px, 2vw, 32px) 8px; background: #fff; border-bottom: 1px solid #e5eaed; }
+.translation-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0; }
+.translation-list { padding-top: 20px; }
 .translation-tools select { min-width: 0; max-width: 100%; padding: 8px; border: 1px solid #cfd6dc; border-radius: 4px; background: #fff; color: #4d5d69; font: inherit; font-size: 12px; }
 .translation-tools .primary-button { min-height: 34px; }
-.translation-feedback { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 20px; }
+.translation-feedback { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 8px; }
 .translation-feedback .translation-status { flex: 1; margin: 0; }
 .translation-feedback .text-button { flex-shrink: 0; }
 .is-error { color: #a33128 !important; }
@@ -96,7 +98,7 @@ button:focus-visible, select:focus-visible, .page-field input:focus-visible { ou
 .icon-button input, .primary-button input { display: none; }
 .page-indicator { min-width: 45px; text-align: center; color: #60717d; font-size: 12px; font-variant-numeric: tabular-nums; }
 .toolbar-divider { flex-shrink: 0; width: 1px; height: 20px; background: #e2e7ea; }
-.reader-controls { position: relative; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; flex-shrink: 0; min-height: 50px; padding: 8px 16px; background: #f9fafb; border-bottom: 1px solid #dce3e7; }
+.reader-controls { position: relative; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; flex-shrink: 0; min-height: 42px; padding: 4px 16px; background: #f9fafb; border-bottom: 1px solid #dce3e7; }
 .source-navigation, .page-navigation, .zoom-controls { display: flex; align-items: center; gap: 3px; }
 .source-navigation { min-width: 0; gap: 8px; }
 .source-label { color: #465963; font-size: 12px; font-weight: 600; white-space: nowrap; }
@@ -136,7 +138,7 @@ button:focus-visible, select:focus-visible, .page-field input:focus-visible { ou
 .source-pane { min-width: 0; position: relative; display: flex; flex-direction: column; overflow: hidden; background: #e9edef; }
 .translation-pane { min-width: 0; overflow: auto; padding: 0 clamp(18px, 2vw, 32px) 64px; background: #fff; border-left: 1px solid #e2e7ea; }
 
-.empty-state { position: absolute; inset: 50px 0 0; display: grid; place-content: center; justify-items: center; text-align: center; padding: 28px; }
+.empty-state { position: absolute; inset: 42px 0 0; display: grid; place-content: center; justify-items: center; text-align: center; padding: 28px; }
 .empty-mark { display: grid; place-items: center; width: 64px; height: 80px; margin-bottom: 20px; border: 2px solid #0f5f65; color: #0f5f65; font-size: 14px; font-weight: 800; letter-spacing: 1px; }
 .empty-state h1 { margin: 0; font-family: Georgia, "Noto Serif SC", serif; font-size: 28px; font-weight: 600; }
 .empty-state p { max-width: 360px; margin: 13px 0 24px; color: #667681; font-size: 14px; line-height: 1.8; }
@@ -159,14 +161,14 @@ button:focus-visible, select:focus-visible, .page-field input:focus-visible { ou
 .pdf-sentence { position: absolute; transform-origin: 0 0; white-space: pre; cursor: crosshair; border-radius: 2px; }
 .pdf-sentence.is-active { opacity: 1; background: rgb(239 183 60 / 52%); mix-blend-mode: multiply; }
 
-.translation-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 50px; border-bottom: 1px solid #e5eaed; padding: 8px 0; }
+.translation-head { display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-height: 42px; padding: 4px 0; }
 .translation-heading { display: flex; align-items: center; gap: 9px; white-space: nowrap; }
 .translation-head h2 { font-family: inherit; font-size: 14px; font-weight: 650; color: #354b56; }
 .reading-badge { padding: 3px 7px; border-radius: 4px; background: #edf5f2; color: #588278; font-size: 10px; font-weight: 500; }
 .eyebrow { margin: 0 0 6px; color: #71818b; font-size: 10px; font-weight: 800; letter-spacing: 1.25px; }
 .translation-head h2, .dialog-heading h2 { margin: 0; }
 .dialog-heading h2 { font-family: Georgia, "Noto Serif SC", serif; font-size: 22px; font-weight: 600; }
-.translation-status { margin: 17px 0 24px; color: #6d7c85; font-size: 13px; line-height: 1.6; }
+.translation-status { margin: 0; color: #6d7c85; font-size: 13px; line-height: 1.6; }
 .translation-pane { --translation-size: 16px; }
 .translation-list { color: #17212b; font-size: var(--translation-size); line-height: 1.85; overflow-wrap: anywhere; }
 .translation-paragraph { margin: 0 0 1.9em; }

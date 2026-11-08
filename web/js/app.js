@@ -85,8 +85,9 @@ function updateControls() {
 function centerInPane(container, target) {
   const bounds = target.getBoundingClientRect();
   const parent = container.getBoundingClientRect();
+  const stickyTop = container.querySelector(':scope > .translation-toolbar')?.offsetHeight ?? 0;
   const moveHorizontally = container !== el.scroll;
-  if (bounds.top < parent.top + 20 || bounds.bottom > parent.bottom - 20 ||
+  if (bounds.top < parent.top + stickyTop + 20 || bounds.bottom > parent.bottom - 20 ||
       (moveHorizontally && (bounds.left < parent.left || bounds.right > parent.right))) {
     container.scrollTo({
       top: container.scrollTop + bounds.top - parent.top - container.clientHeight / 3,

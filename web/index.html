@@ -132,10 +132,8 @@
 
         <div id="pane-divider" class="pane-divider" role="separator" tabindex="0" aria-label="调整原文与译文宽度" aria-orientation="vertical" aria-controls="source-pane" aria-valuemin="25" aria-valuemax="75" aria-valuenow="62" title="拖动调整左右宽度；双击恢复默认"></div>
         <aside class="translation-pane">
+          <div class="translation-toolbar">
           <div class="translation-head">
-            <div class="translation-heading">
-              <h2>中文译文</h2><span class="reading-badge">对照阅读</span>
-            </div>
             <div class="reading-actions">
               <div class="text-size-controls" role="group" aria-label="译文字号">
                 <span class="text-size-label">字号</span>
@@ -157,6 +155,7 @@
           <div id="translation-feedback" class="translation-feedback" hidden>
             <p id="translation-status" class="translation-status" role="status"></p>
             <button id="retry-parse" class="text-button" hidden>重试解析</button>
+          </div>
           </div>
           <div id="translation-list" class="translation-list" aria-live="polite"></div>
         </aside>
