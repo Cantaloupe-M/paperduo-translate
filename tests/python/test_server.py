@@ -27,8 +27,28 @@ TEI = b'''<TEI xmlns="http://www.tei-c.org/ns/1.0">
 <figure coords="2,50,120,200,80"><figDesc>Figure 1. Architecture.</figDesc></figure>
 </div></body><back><div><listBibl><biblStruct xml:id="b0" coords="2,50,500,200,30">Reference One</biblStruct></listBibl></div></back></text></TEI>'''
 
+ARXIV_FEED = b'''<feed xmlns="http://www.w3.org/2005/Atom"><entry>
+<id>http://arxiv.org/abs/2401.12345v2</id><updated>2024-02-01T00:00:00Z</updated>
+<title>A Cached Arxiv Paper</title><summary>Abstract.</summary>
+<author><name>Ada Example</name></author>
+<link title="pdf" href="https://arxiv.org/pdf/2401.12345v2" />
+</entry></feed>'''
+ARXIV_LATEST_FEED = ARXIV_FEED.replace(b"/abs/2401.12345v2", b"/abs/2401.12345").replace(
+    b"https://arxiv.org/pdf/2401.12345v2", b"https://arxiv.org/pdf/2401.12345v3")
+
 
 class ParsingTests(unittest.TestCase):
+    def test_arxiv_identifiers_and_feed_metadata(self):
+        self.assertEqual(server.normalize_arxiv_identifier("https://arxiv.org/abs/2401.12345v2"),
+                         ("2401.12345", 2))
+        self.assertEqual(server.normalize_arxiv_identifier("arXiv:hep-th/9901001"),
+                         ("hep-th/9901001", None))
+        metadata = server.parse_arxiv_feed(ARXIV_FEED, "2401.12345", None)
+        self.assertEqual(metadata["arxiv_id"], "2401.12345")
+        self.assertEqual(metadata["version"], 2)
+        self.assertEqual(metadata["authors"], ["Ada Example"])
+        self.assertEqual(server.parse_arxiv_feed(ARXIV_LATEST_FEED, "2401.12345", None)["version"], 3)
+
     def test_multiline_cross_page_and_reading_order(self):
         result = server.parse_tei(TEI)
         self.assertEqual(result["title"], "A CS Paper")
@@ -65,6 +85,37 @@ class ParsingTests(unittest.TestCase):
             with self.subTest(xml=xml[:30]):
                 with self.assertRaises((ValueError, server.etree.XMLSyntaxError)):
                     server.parse_tei(xml)
+
+
+class ArxivNetworkTests(unittest.IsolatedAsyncioTestCase):
+    async def test_metadata_and_pdf_share_proxy_with_environment_fallback(self):
+        for settings, expected in (
+            ({"ARXIV_HTTP_PROXY": "http://arxiv-proxy.test:8080",
+              "HTTPS_PROXY": "http://host-proxy.test:8080"}, "http://arxiv-proxy.test:8080"),
+            ({"HTTPS_PROXY": "http://host-proxy.test:8080"}, "http://host-proxy.test:8080"),
+            ({"https_proxy": "http://lower-proxy.test:8080"}, "http://lower-proxy.test:8080"),
+            ({}, None),
+        ):
+            with self.subTest(settings=settings):
+                remote = AsyncMock()
+                remote.get.side_effect = [
+                    httpx.Response(200, content=ARXIV_FEED,
+                                   request=httpx.Request("GET", server.ARXIV_API_URL)),
+                    httpx.Response(200, content=b"%PDF-1.4 test",
+                                   request=httpx.Request("GET", "https://arxiv.org/pdf/2401.12345v2")),
+                ]
+                environment = {"ARXIV_HTTP_PROXY": "", "HTTPS_PROXY": "", "https_proxy": "", **settings}
+                with patch.dict(os.environ, environment), patch.object(server.httpx, "AsyncClient") as factory:
+                    factory.return_value.__aenter__ = AsyncMock(return_value=remote)
+                    factory.return_value.__aexit__ = AsyncMock(return_value=False)
+                    metadata = await server.fetch_arxiv_metadata("2401.12345")
+                    data = await server.download_arxiv_pdf(metadata)
+                self.assertEqual(metadata["version"], 2)
+                self.assertEqual(data, b"%PDF-1.4 test")
+                self.assertEqual(factory.call_count, 2)
+                for call in factory.call_args_list:
+                    self.assertEqual(call.kwargs["proxy"], expected)
+                    self.assertFalse(call.kwargs["trust_env"])
 
 
 class ApiTests(unittest.TestCase):
@@ -113,6 +164,18 @@ class ApiTests(unittest.TestCase):
         removed = self.client.put('/api/profile', json={"username": "新用户名", "avatar": None})
         self.assertEqual(removed.status_code, 200)
         self.assertEqual(self.client.get('/api/profile').json(), {"username": "新用户名", "avatar": None})
+
+    def test_arxiv_metadata_timeout_returns_retryable_error(self):
+        remote = AsyncMock()
+        remote.get.side_effect = httpx.ConnectTimeout("offline")
+        with patch.object(server.httpx, "AsyncClient") as factory:
+            factory.return_value.__aenter__ = AsyncMock(return_value=remote)
+            factory.return_value.__aexit__ = AsyncMock(return_value=False)
+            result = self.client.post("/api/arxiv", json={"identifier": "2401.12345"})
+        self.assertEqual(result.status_code, 503)
+        self.assertIn("连接 arXiv 超时", result.json()["detail"])
+        self.assertIn("代理", result.json()["detail"])
+        self.assertEqual(self.client.get("/api/documents").json(), [])
 
     def test_invalid_profile_updates_preserve_saved_profile(self):
         original = {"username": "保留资料", "avatar": None}

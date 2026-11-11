@@ -13,7 +13,8 @@ services:
       TRANSLATION_LLM_MODELS: ${TRANSLATION_LLM_MODELS:-}
       TRANSLATION_LLM_API_KEY: ${TRANSLATION_LLM_API_KEY:-}
       TRANSLATION_GLOSSARY: ${TRANSLATION_GLOSSARY:-}
-      # The host's HTTPS proxy is made available only to academic-model calls.
+      ARXIV_HTTP_PROXY: ${ARXIV_HTTP_PROXY:-${HTTPS_PROXY:-${https_proxy:-}}}
+      # External integrations can reuse the host's HTTPS proxy.
       # It is needed on hosts where Docker has no direct external DNS access.
       TRANSLATION_LLM_PROXY: ${TRANSLATION_LLM_PROXY:-${HTTPS_PROXY:-}}
     volumes:

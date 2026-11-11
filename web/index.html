@@ -119,6 +119,16 @@
             <p>保留论文原始版式，逐句对照阅读。支持双栏论文、章节导航与引用位置识别。</p>
             <button id="choose-document" type="button" class="primary-button">选择 PDF</button>
             <input id="empty-file-input" type="file" accept="application/pdf,.pdf" hidden />
+            <div class="open-divider"><span>或</span></div>
+            <form id="arxiv-form" class="arxiv-form">
+              <label for="arxiv-identifier">从 arXiv 打开</label>
+              <div class="arxiv-form-row">
+                <input id="arxiv-identifier" name="identifier" type="text" inputmode="url"
+                  placeholder="输入 arXiv ID 或链接，如 2401.12345" autocomplete="off" required maxlength="300" />
+                <button type="submit" class="secondary-button">加载论文</button>
+              </div>
+              <p>同一论文版本的译文会保存在知识库中，重复打开时直接复用。</p>
+            </form>
           </div>
           <div id="pdf-scroll" class="pdf-scroll" title="Ctrl/⌘ + 滚轮可缩放 PDF" hidden>
             <div class="pdf-sheet">

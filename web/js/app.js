@@ -9,7 +9,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdf.worker.min.mjs',
 const state = {
   pdf: null, document: null, page: 1, scale: 1.2, sentences: [], translations: {},
   generation: 0, renderVersion: 0, renderTask: null, controller: null,
-  sourceNodes: new Map(), cards: new Map(), active: null, pendingFile: null,
+  sourceNodes: new Map(), cards: new Map(), active: null, pendingFile: null, pendingArxiv: null,
   translating: false, translationRun: 0, models: [], model: null, opening: false,
 };
 const $ = (selector) => document.querySelector(selector);
@@ -25,7 +25,7 @@ const el = {
   outline: $('#outline-select'), feedback: $('#translation-feedback'),
   editorError: $('#editor-error'),
   translate: $('#translate-page'), stopTranslation: $('#stop-translation'),
-  model: $('#translation-model'),
+  model: $('#translation-model'), arxivForm: $('#arxiv-form'), arxivIdentifier: $('#arxiv-identifier'),
 };
 
 const textSize = setupTextSize({ target: $('.translation-pane'), out: $('#text-smaller'), grow: $('#text-larger'), value: $('#text-size-value') });
@@ -348,6 +348,7 @@ async function openPdf(file) {
   const previousPdf = state.pdf;
   state.pdf = null;
   state.pendingFile = file;
+  state.pendingArxiv = null;
   sessionStorage.removeItem('paperduo-document');
   el.name.textContent = file.name;
   el.name.title = file.name;
@@ -369,6 +370,45 @@ async function openPdf(file) {
   } finally { if (generation === state.generation) state.opening = false; }
 }
 
+async function openArxiv(identifier) {
+  const value = String(identifier || '').trim();
+  if (!value) return;
+  personalSpace.showReader();
+  const generation = ++state.generation;
+  state.opening = true;
+  resetDocument();
+  const previousPdf = state.pdf;
+  state.pdf = null;
+  state.pendingFile = null;
+  state.pendingArxiv = value;
+  sessionStorage.removeItem('paperduo-document');
+  el.name.textContent = value;
+  el.name.title = value;
+  el.empty.hidden = true;
+  el.scroll.hidden = false;
+  setStatus('正在从 arXiv 获取论文…');
+  try {
+    const parsed = await api('/api/arxiv', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: value }), signal: state.controller.signal });
+    if (generation !== state.generation) return;
+    const pdf = await pdfjsLib.getDocument(`/api/documents/${parsed.id}/pdf`).promise;
+    if (generation !== state.generation) { await pdf.destroy(); return; }
+    state.pdf = pdf;
+    navigation.setPdf(pdf);
+    previousPdf?.destroy();
+    applyDocument(parsed);
+    state.page = Math.min(pdf.numPages, Math.max(1, parsed.last_page || 1));
+    await renderPage();
+    recordReading();
+  } catch (error) {
+    if (generation !== state.generation || error.name === 'AbortError') return;
+    el.retry.hidden = false;
+    setStatus(error.message, true);
+    updateControls();
+  } finally { if (generation === state.generation) state.opening = false; }
+}
+
 async function reopen(documentId) {
   personalSpace.showReader();
   const generation = ++state.generation;
@@ -377,6 +417,7 @@ async function reopen(documentId) {
   const previousPdf = state.pdf;
   state.pdf = null;
   state.pendingFile = null;
+  state.pendingArxiv = null;
   setStatus('正在读取已缓存的论文与译文…');
   try {
     const parsed = await api(`/api/documents/${documentId}`, { signal: state.controller.signal });
@@ -615,6 +656,10 @@ for (const input of [el.file, el.emptyFile]) input.addEventListener('change', (e
   void openPdf(event.target.files[0]);
   event.target.value = '';
 });
+el.arxivForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  void openArxiv(el.arxivIdentifier.value);
+});
 el.previous.addEventListener('click', () => changePage(-1));
 el.next.addEventListener('click', () => changePage(1));
 el.pageNumber.addEventListener('focus', () => el.pageNumber.select());
@@ -650,9 +695,10 @@ el.model.addEventListener('change', () => {
 el.stopTranslation.addEventListener('click', () => { state.translationRun++; el.stopTranslation.disabled = true;
   setStatus('正在结束当前批次，已完成的译文会保留…'); });
 el.retry.addEventListener('click', () => {
-  if (!state.pendingFile) return;
+  if (!state.pendingFile && !state.pendingArxiv) return;
   el.retry.hidden = true;
-  void parseFile(state.pendingFile, state.generation);
+  if (state.pendingArxiv) void openArxiv(state.pendingArxiv);
+  else void parseFile(state.pendingFile, state.generation);
 });
 async function navigateSection(id) {
   const section = state.document?.outline.find((item) => item.id === id);

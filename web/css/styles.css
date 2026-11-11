@@ -142,6 +142,15 @@ button:focus-visible, select:focus-visible, .page-field input:focus-visible { ou
 .empty-mark { display: grid; place-items: center; width: 64px; height: 80px; margin-bottom: 20px; border: 2px solid #0f5f65; color: #0f5f65; font-size: 14px; font-weight: 800; letter-spacing: 1px; }
 .empty-state h1 { margin: 0; font-family: Georgia, "Noto Serif SC", serif; font-size: 28px; font-weight: 600; }
 .empty-state p { max-width: 360px; margin: 13px 0 24px; color: #667681; font-size: 14px; line-height: 1.8; }
+.open-divider { display: flex; align-items: center; gap: 12px; width: min(360px, 100%); margin: 20px 0 14px; color: #9aa7ad; font-size: 12px; }
+.open-divider::before, .open-divider::after { content: ''; height: 1px; flex: 1; background: #dfe6e8; }
+.arxiv-form { width: min(440px, 100%); text-align: left; }
+.arxiv-form label { display: block; margin-bottom: 7px; color: #52646c; font-size: 13px; font-weight: 700; }
+.arxiv-form-row { display: flex; gap: 8px; }
+.arxiv-form input { min-width: 0; flex: 1; height: 38px; padding: 0 11px; border: 1px solid #bdc9cf; border-radius: 4px; background: #fff; color: #30434b; font: inherit; font-size: 13px; }
+.arxiv-form input:focus { border-color: #0f5f65; outline: 2px solid #b8d8d9; outline-offset: 1px; }
+.arxiv-form .secondary-button { flex-shrink: 0; min-height: 38px; padding-inline: 13px; }
+.arxiv-form p { max-width: none; margin: 8px 0 0; color: #829097; font-size: 12px; line-height: 1.6; }
 
 .primary-button, .secondary-button, .text-button { border-radius: 4px; cursor: pointer; }
 .primary-button { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0 16px; border: 1px solid #0f5f65; color: #fff; background: #0f5f65; font-size: 13px; font-weight: 700; }

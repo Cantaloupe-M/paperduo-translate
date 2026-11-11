@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime, timezone
 from contextlib import closing, contextmanager
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 import httpx
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
@@ -32,6 +32,10 @@ MAX_PDF_BYTES = 30 * 1024 * 1024
 MAX_AVATAR_BYTES = 2 * 1024 * 1024
 SCHEMA_VERSION = 4
 NS = {"t": "http://www.tei-c.org/ns/1.0"}
+ATOM_NS = "http://www.w3.org/2005/Atom"
+ARXIV_API_URL = os.getenv("ARXIV_API_URL", "https://export.arxiv.org/api/query").rstrip("/")
+ARXIV_PDF_URL = os.getenv("ARXIV_PDF_URL", "https://arxiv.org/pdf").rstrip("/")
+ARXIV_USER_AGENT = os.getenv("ARXIV_USER_AGENT", "PaperDuo/1.0 (self-hosted academic reader)")
 app = FastAPI(title="PaperDuo", docs_url=None, redoc_url=None)
 translation_slots = asyncio.Semaphore(2)
 
@@ -56,13 +60,19 @@ def database():
         db.execute("""CREATE TABLE IF NOT EXISTS document_library (
             document_id TEXT PRIMARY KEY, collection_id TEXT,
             last_read_at TEXT, last_page INTEGER NOT NULL DEFAULT 1)""")
+        db.execute("""CREATE TABLE IF NOT EXISTS arxiv_papers (
+            arxiv_id TEXT NOT NULL, version INTEGER NOT NULL,
+            document_id TEXT NOT NULL, title TEXT NOT NULL DEFAULT '',
+            authors TEXT NOT NULL DEFAULT '[]', updated_at TEXT,
+            PRIMARY KEY (arxiv_id, version),
+            FOREIGN KEY (document_id) REFERENCES documents(id))""")
         db.execute("""CREATE TABLE IF NOT EXISTS profile (
             id INTEGER PRIMARY KEY CHECK (id=1), username TEXT NOT NULL, avatar TEXT)""")
         yield db
 
 
 def text_of(node):
-    return re.sub(r"\s+", " ", "".join(node.itertext())).strip()
+    return re.sub(r"\s+", " ", "".join(node.itertext())).strip() if node is not None else ""
 
 
 def coordinates(value):
@@ -191,6 +201,12 @@ def document_response(row, db, cached=True):
     metadata = db.execute("SELECT collection_id, last_read_at, last_page FROM document_library "
                           "WHERE document_id=?", (row["id"],)).fetchone()
     result.update(dict(metadata) if metadata else {"collection_id": None, "last_read_at": None, "last_page": 1})
+    arxiv = db.execute("SELECT arxiv_id, version, title, authors, updated_at FROM arxiv_papers "
+                       "WHERE document_id=? ORDER BY version DESC, arxiv_id LIMIT 1", (row["id"],)).fetchone()
+    if arxiv:
+        arxiv = dict(arxiv)
+        arxiv["authors"] = json.loads(arxiv["authors"] or "[]")
+        result["arxiv"] = arxiv
     valid_ids = {s["id"] for s in result["segments"]}
     result["translations"] = {r["segment_id"]: r["text"] for r in db.execute(
         "SELECT segment_id, text FROM translations WHERE document_id = ?", (row["id"],))
@@ -203,6 +219,119 @@ def get_document(db, document_id):
     if row is None:
         raise HTTPException(404, "论文不存在，请重新打开 PDF")
     return row
+
+
+ARXIV_ID_RE = re.compile(
+    r"(?P<base>(?:[a-z][a-z0-9-]*(?:\.[a-z]{2})?/\d{7}|\d{4}\.\d{4,5}))"
+    r"(?:v(?P<version>\d+))?", re.IGNORECASE)
+
+
+def arxiv_proxy():
+    """Prefer the arXiv proxy, then the environment's HTTPS proxy."""
+    return (os.getenv("ARXIV_HTTP_PROXY", "").strip()
+            or os.getenv("HTTPS_PROXY", "").strip()
+            or os.getenv("https_proxy", "").strip()
+            or None)
+
+
+def normalize_arxiv_identifier(value):
+    """Return a canonical arXiv id and optional requested version."""
+    raw = str(value or "").strip()
+    if raw.lower().startswith("arxiv:"):
+        raw = raw[6:].strip()
+    parsed = urlsplit(raw)
+    if parsed.scheme and parsed.netloc:
+        host = parsed.netloc.lower().split(":", 1)[0]
+        if host not in {"arxiv.org", "www.arxiv.org", "export.arxiv.org"}:
+            raise ValueError("请输入 arXiv ID 或 arxiv.org 链接")
+        raw = parsed.path
+    raw = raw.strip().strip("/")
+    raw = re.sub(r"^(?:abs|pdf)/", "", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"\.pdf$", "", raw, flags=re.IGNORECASE)
+    match = ARXIV_ID_RE.fullmatch(raw)
+    if not match:
+        raise ValueError("无法识别 arXiv ID，例如 2401.12345 或 hep-th/9901001")
+    return match["base"].lower(), int(match["version"]) if match["version"] else None
+
+
+def parse_arxiv_feed(xml, requested_id, requested_version):
+    parser = etree.XMLParser(resolve_entities=False, no_network=True, recover=False)
+    root = etree.fromstring(xml, parser)
+    entry = root.find(f"{{{ATOM_NS}}}entry")
+    if entry is None:
+        raise ValueError("arXiv 没有找到这篇论文")
+    entry_id = text_of(entry.find(f"{{{ATOM_NS}}}id"))
+    if "/api/errors#" in entry_id:
+        raise ValueError(text_of(entry.find(f"{{{ATOM_NS}}}summary")) or "arXiv ID 无效")
+    canonical = entry_id.rsplit("/", 1)[-1]
+    try:
+        parsed_id, discovered_version = normalize_arxiv_identifier(canonical)
+    except ValueError:
+        parsed_id, discovered_version = requested_id, None
+    links = entry.findall(f"{{{ATOM_NS}}}link")
+    pdf_link = next((link.get("href") for link in links if link.get("title") == "pdf"), None)
+    if pdf_link:
+        pdf_host = urlsplit(pdf_link).netloc.lower().split(":", 1)[0]
+        if pdf_host not in {"arxiv.org", "www.arxiv.org", "export.arxiv.org"}:
+            pdf_link = None
+    link_id = next((link.get("href", "") for link in links if link.get("rel") == "alternate"), "")
+    linked_version = re.search(r"v(\d+)(?:\.pdf)?$", pdf_link or link_id, re.IGNORECASE)
+    if linked_version:
+        discovered_version = int(linked_version.group(1))
+    version = requested_version or discovered_version or 1
+    pdf_url = pdf_link or f"{ARXIV_PDF_URL}/{quote(parsed_id, safe='/')}v{version}"
+    return {"arxiv_id": parsed_id, "version": version,
+            "title": text_of(entry.find(f"{{{ATOM_NS}}}title")),
+            "summary": text_of(entry.find(f"{{{ATOM_NS}}}summary")),
+            "authors": [text_of(author.find(f"{{{ATOM_NS}}}name"))
+                        for author in entry.findall(f"{{{ATOM_NS}}}author")],
+            "updated": text_of(entry.find(f"{{{ATOM_NS}}}updated")),
+            "pdf_url": pdf_url}
+
+
+async def fetch_arxiv_metadata(arxiv_id, version=None):
+    query_id = arxiv_id + (f"v{version}" if version else "")
+    try:
+        async with httpx.AsyncClient(trust_env=False,
+                                     proxy=arxiv_proxy(),
+                                     headers={"User-Agent": ARXIV_USER_AGENT},
+                                     timeout=httpx.Timeout(30, connect=8)) as client:
+            response = await client.get(ARXIV_API_URL, params={"id_list": query_id, "max_results": "1"})
+        if response.status_code == 429:
+            raise ValueError("arXiv 请求过于频繁，请稍后再试")
+        response.raise_for_status()
+        return parse_arxiv_feed(response.content, arxiv_id, version)
+    except ValueError:
+        raise
+    except httpx.TimeoutException:
+        raise RuntimeError("连接 arXiv 超时，请检查服务器网络或 arXiv 代理设置后重试") from None
+    except (httpx.HTTPError, etree.XMLSyntaxError):
+        raise RuntimeError("无法读取 arXiv 元数据，请确认网络连接后重试") from None
+
+
+async def download_arxiv_pdf(metadata):
+    try:
+        async with httpx.AsyncClient(trust_env=False,
+                                     proxy=arxiv_proxy(),
+                                     headers={"User-Agent": ARXIV_USER_AGENT},
+                                     follow_redirects=True,
+                                     timeout=httpx.Timeout(120, connect=10)) as client:
+            response = await client.get(metadata["pdf_url"])
+        if response.status_code == 429:
+            raise ValueError("arXiv 请求过于频繁，请稍后再试")
+        response.raise_for_status()
+        data = response.content
+    except ValueError:
+        raise
+    except httpx.TimeoutException:
+        raise RuntimeError("下载 arXiv PDF 超时，请检查服务器网络或 arXiv 代理设置后重试") from None
+    except httpx.HTTPError:
+        raise RuntimeError("无法下载 arXiv PDF，请确认该论文仍可访问") from None
+    if len(data) > MAX_PDF_BYTES:
+        raise ValueError("arXiv PDF 不能超过 30 MB")
+    if not data.lstrip().startswith(b"%PDF-"):
+        raise ValueError("arXiv 返回的内容不是有效 PDF")
+    return data
 
 
 @app.get("/api/health")
@@ -220,15 +349,20 @@ async def health():
 def list_documents():
     with database() as db:
         rows = db.execute("""SELECT d.id, d.filename, d.created_at, d.parsed,
-            l.collection_id, l.last_read_at, COALESCE(l.last_page, 1) AS last_page
+            l.collection_id, l.last_read_at, COALESCE(l.last_page, 1) AS last_page,
+            a.arxiv_id, a.version AS arxiv_version, a.title AS arxiv_title, a.authors AS arxiv_authors
             FROM documents d LEFT JOIN document_library l ON l.document_id=d.id
+            LEFT JOIN arxiv_papers a ON a.document_id=d.id AND a.version=(
+                SELECT MAX(version) FROM arxiv_papers a2 WHERE a2.document_id=d.id)
             ORDER BY julianday(COALESCE(l.last_read_at, d.created_at)) DESC, d.id""")
         documents = []
         for row in rows:
             item = dict(row)
             parsed = json.loads(item.pop("parsed"))
-            item.update(title=parsed.get("title") or item["filename"],
-                        authors=parsed.get("authors", []), page_count=len(parsed.get("pages", [])))
+            arxiv_authors = json.loads(item["arxiv_authors"] or "[]") if item.get("arxiv_authors") else []
+            item.update(title=parsed.get("title") or item.get("arxiv_title") or item["filename"],
+                        authors=parsed.get("authors") or arxiv_authors,
+                        page_count=len(parsed.get("pages", [])))
             documents.append(item)
         return documents
 
@@ -372,6 +506,15 @@ async def import_document(file: UploadFile = File(...)):
         row = db.execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
         if row:
             return document_response(row, db)
+    tei_data, parsed = await parse_pdf_bytes(data)
+    filename = Path(file.filename or "paper.pdf").name
+    with database() as db:
+        db.execute("INSERT OR IGNORE INTO documents (id, filename, pdf, tei, parsed) VALUES (?, ?, ?, ?, ?)",
+                   (document_id, filename, data, tei_data, json.dumps(parsed, ensure_ascii=False)))
+        return document_response(get_document(db, document_id), db, cached=False)
+
+
+async def parse_pdf_bytes(data):
     fields = [("segmentSentences", (None, "1")), ("generateIDs", (None, "1")),
               ("consolidateHeader", (None, "0")), ("consolidateCitations", (None, "0")),
               ("includeRawCitations", (None, "1"))]
@@ -393,10 +536,60 @@ async def import_document(file: UploadFile = File(...)):
         raise HTTPException(502, "GROBID 解析失败；请确认 PDF 未加密且包含可提取的文字") from None
     except (etree.XMLSyntaxError, ValueError, TypeError):
         raise HTTPException(422, "未得到可定位的论文结构；扫描件或复杂版面需要 OCR 解析器") from None
-    filename = Path(file.filename or "paper.pdf").name
+    return response.content, parsed
+
+
+class ArxivImport(BaseModel):
+    identifier: str = Field(min_length=1, max_length=300)
+
+
+@app.post("/api/arxiv")
+async def import_arxiv(request: ArxivImport):
+    try:
+        arxiv_id, requested_version = normalize_arxiv_identifier(request.identifier)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from None
+    if requested_version is not None:
+        with database() as db:
+            linked = db.execute("SELECT d.* FROM arxiv_papers a JOIN documents d ON d.id=a.document_id "
+                                "WHERE a.arxiv_id=? AND a.version=?", (arxiv_id, requested_version)).fetchone()
+            if linked:
+                return document_response(linked, db, cached=True)
+    try:
+        metadata = await fetch_arxiv_metadata(arxiv_id, requested_version)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from None
+    except RuntimeError as error:
+        raise HTTPException(503, str(error)) from None
+    with database() as db:
+        linked = db.execute("SELECT d.* FROM arxiv_papers a JOIN documents d ON d.id=a.document_id "
+                            "WHERE a.arxiv_id=? AND a.version=?", (metadata["arxiv_id"], metadata["version"])).fetchone()
+        if linked:
+            return document_response(linked, db, cached=True)
+    try:
+        data = await download_arxiv_pdf(metadata)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from None
+    except RuntimeError as error:
+        raise HTTPException(503, str(error)) from None
+    document_id = hashlib.sha256(data).hexdigest()
+    with database() as db:
+        existing = db.execute("SELECT * FROM documents WHERE id=?", (document_id,)).fetchone()
+        if existing:
+            db.execute("INSERT OR IGNORE INTO arxiv_papers "
+                       "(arxiv_id, version, document_id, title, authors, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                       (metadata["arxiv_id"], metadata["version"], document_id, metadata["title"],
+                        json.dumps(metadata["authors"], ensure_ascii=False), metadata["updated"]))
+            return document_response(existing, db, cached=True)
+    tei_data, parsed = await parse_pdf_bytes(data)
+    filename = f"arxiv-{metadata['arxiv_id']}.pdf".replace("/", "-")
     with database() as db:
         db.execute("INSERT OR IGNORE INTO documents (id, filename, pdf, tei, parsed) VALUES (?, ?, ?, ?, ?)",
-                   (document_id, filename, data, response.content, json.dumps(parsed, ensure_ascii=False)))
+                   (document_id, filename, data, tei_data, json.dumps(parsed, ensure_ascii=False)))
+        db.execute("INSERT OR IGNORE INTO arxiv_papers "
+                   "(arxiv_id, version, document_id, title, authors, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                   (metadata["arxiv_id"], metadata["version"], document_id, metadata["title"],
+                    json.dumps(metadata["authors"], ensure_ascii=False), metadata["updated"]))
         return document_response(get_document(db, document_id), db, cached=False)
 
 
